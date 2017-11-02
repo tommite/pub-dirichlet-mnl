@@ -28,7 +28,7 @@ df.q1.2alt <- ldply(unique(df.q1$url), function(responder) {
 df <- rbind(df.q1.2alt, subset(df, question.no != 1))
 
 ## Add alt.var
-alt.vars <- c('a', 'b')
+alt.vars <- c('A', 'B')
 df[,'alt'] <- rep(alt.vars, times=nrow(df) / length(alt.vars))
 
 ## Fit MNL
@@ -37,12 +37,12 @@ mdata <- mlogit.data(df, choice='selected.by.subject',
                      id.var='url',
                      shape='long',
                      alt.var='alt')
-res <- mlogit(selected.by.subject ~ 0 + level.PFS + level.mod + level.sev, data=mdata)
+res <- mlogit(selected.by.subject ~ level.PFS + level.mod + level.sev, data=mdata)
 
 ## Normalize weights to scale
 scales <- c(diff(range(df$level.PFS)), diff(range(df$level.mod)), diff(range(df$level.sev)))
-norm.to.scale <- abs(as.matrix(res$coefficients) * scales)
+norm.to.scale <- abs(as.matrix(res$coefficients[-1]) * scales)
 norm.weights <- norm.to.scale / sum(norm.to.scale)
 
-summary(res)
+print(summary(res))
 print(norm.weights)
