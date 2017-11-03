@@ -21,7 +21,7 @@ df.q1.2alt <- ldply(unique(df.q1$url), function(responder) {
     q2$idx <- paste0(q2$idx, '.', 2)
     q1$question.no <- paste0(q1$question.no, '.', 1)
     q2$question.no <- paste0(q2$question.no, '.', 2)
-    rbind(q1, q2)
+    rbind(q1, q2) 
 })
 
 ## Combine
@@ -31,6 +31,7 @@ df <- rbind(df.q1.2alt, subset(df, question.no != 1))
 alt.vars <- c('A', 'B')
 df[,'alt'] <- rep(alt.vars, times=nrow(df) / length(alt.vars))
 
+df <- df[,c(2:7, 22, 23)]
 ## Fit MNL
 mdata <- mlogit.data(df, choice='selected.by.subject',
                      ch.id='idx',
