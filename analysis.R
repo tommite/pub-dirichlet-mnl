@@ -2,6 +2,7 @@ library(mlogit)
 library(plyr)
 
 data.file <- 'data/data_DCE.csv'
+data.file.w <- 'data/preference_data.csv'
 
 df.raw <- read.csv2(data.file, header=TRUE, sep=',', stringsAsFactors=FALSE)
 df <- df.raw
@@ -21,7 +22,7 @@ df.q1.2alt <- ldply(unique(df.q1$url), function(responder) {
     q2$idx <- paste0(q2$idx, '.', 2)
     q1$question.no <- paste0(q1$question.no, '.', 1)
     q2$question.no <- paste0(q2$question.no, '.', 2)
-    rbind(q1, q2) 
+    rbind(q1, q2)
 })
 
 ## Combine
@@ -32,6 +33,7 @@ alt.vars <- c('A', 'B')
 df[,'alt'] <- rep(alt.vars, times=nrow(df) / length(alt.vars))
 
 df <- df[,c(2:7, 22, 23)]
+
 ## Fit MNL
 mdata <- mlogit.data(df, choice='selected.by.subject',
                      ch.id='idx',
@@ -42,8 +44,21 @@ res <- mlogit(selected.by.subject ~ level.PFS + level.mod + level.sev, data=mdat
 
 ## Normalize weights to scale
 scales <- c(diff(range(df$level.PFS)), diff(range(df$level.mod)), diff(range(df$level.sev)))
-norm.to.scale <- abs(as.matrix(res$coefficients[-1]) * scales)
+norm.to.scale <- abs(as.matrix(res$coefficients) * scales)
 norm.weights <- norm.to.scale / sum(norm.to.scale)
 
 print(summary(res))
 print(norm.weights)
+
+
+df.w <- read.csv2(data.file.w, header=TRUE, sep=',', stringsAsFactors=FALSE)
+
+crit.names <- c('pfs', 'mod', 'sev')
+
+weights <- aaply(df.w, 1, function(x) {
+    laply(paste0('d', 1:3), function(c) {
+        sum(as.numeric(x[grep(c, names(df.w))]))
+    })
+}, .expand=FALSE)
+
+colnames(weights) <- crit.names
