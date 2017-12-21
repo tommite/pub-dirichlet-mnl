@@ -1,93 +1,80 @@
-library(mlogit)
 library(plyr)
-library(colorspace)
 library(support.CEs)
+library(MCMCprecision)
+library(smaa)
+source('load.dce.R')
 
-## Dirichlet to Douwe's data
+set.seed(1911)
 
-data.file <- 'data/data_DCE.csv'
-data.file.w <- 'data/data_PFS_har.csv'
-
-df.raw <- read.csv(data.file, header=TRUE, sep=',', stringsAsFactors=FALSE)
-df <- df.raw
-df[,'idx'] <- paste0(df$url, '.', df$question.no)
-
-## Load weight data
-df.w <- read.csv(data.file.w, header=TRUE, sep=',', stringsAsFactors=FALSE)
-df.w.highpfs <- subset(df.w, pfs > sev)
-df.w.highpfs <- subset(df.w.highpfs,  sev > mod)
-
-
-## Transform first question to 2 preference statements
-df.q1 <- subset(df, question.no == 1)
-
-df.q1.2alt <- ldply(unique(df.q1$url), function(responder) {
-    slice <- df.q1[df.q1$url == responder,]
-
-    idx.selected <- which(slice$selected.by.subject == 1)
-    idx.others <- setdiff(1:3, idx.selected)
-    q1 <- slice[c(idx.selected, idx.others[1]),]
-    q2 <- slice[c(idx.selected, idx.others[2]),]
-    q1$idx <- paste0(q1$idx, '.', 1)
-    q2$idx <- paste0(q2$idx, '.', 2)
-    q1$question.no <- paste0(q1$question.no, '.', 1)
-    q2$question.no <- paste0(q2$question.no, '.', 2)
-    rbind(q1, q2)
-})
-
-## Combine
-df <- rbind(df.q1.2alt, subset(df, question.no != 1))
-
-## Add alt.var
-alt.vars <- c('A', 'B')
-df[,'alt'] <- rep(alt.vars, times=nrow(df) / length(alt.vars))
-
-df <- df[,c(2:7, 22, 23)]
-
+## Generate L^ma non-dominated design ##
 attribute.names <- list('PFS'=sort(unique(df$level.PFS)),
                         'mod'=sort(unique(df$level.mod)),
                         'sev'=sort(unique(df$level.sev)))
-
 design <- Lma.design(attribute.names=attribute.names, nalternatives=2, nblocks=1)
-## filter out dominated alternative questions
 ok.qs <- laply(rownames(design$alternatives$alt.1), function(q.idx) {
     q1 <- as.numeric(as.matrix(design$alternatives$alt.1[q.idx,c('PFS', 'mod', 'sev')]))
     q2 <- as.numeric(as.matrix(design$alternatives$alt.2[q.idx,c('PFS', 'mod', 'sev')]))
     !((q1[1] >= q2[1] && q1[2] <= q2[2] && q1[3] <= q2[3]) ||
       (q1[1] <= q2[1] && q1[2] >= q2[2] && q1[3] >= q2[3]))
 })
+a1.qs <- design$alternatives$alt.1[ok.qs,]
+a2.qs <- design$alternatives$alt.2[ok.qs,]
+a1.qs$q.nr <- 1:nrow(a1.qs)
+a2.qs$q.nr <- 1:nrow(a2.qs)
+a1.qs$alt <- 'A'
+a2.qs$alt <- 'B'
+design.nondom <- rbind(a1.qs, a2.qs)[,c('q.nr', 'alt', 'PFS', 'mod', 'sev')]
+design.nondom <- design.nondom[order(design.nondom$q.nr),]
+design.nondom$PFS <- as.numeric(as.vector(design.nondom$PFS))
+design.nondom$mod <- as.numeric(as.vector(design.nondom$mod))
+design.nondom$sev <- as.numeric(as.vector(design.nondom$sev))
 
-design.nondom <- list(alt.1=design$alternatives$alt.1[ok.qs,],
-                      alt.2=design$alternatives$alt.2[ok.qs,])
+ranges <- laply(attribute.names, range)
+rownames(ranges) <- names(attribute.names)
+ranges[2:3,] <- ranges[2:3,c(2,1)] # inverse mod,sev to get correct preference direction
 
-##
-##df <- subset(df, url %in% df.w.highpfs$url)
+## Estimate a dirichlet distribution from the weight data ##
+dir.pars <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
 
-## Fit MNL
-mdata <- mlogit.data(df, choice='selected.by.subject',
+n.dce.respondents <- length(unique(df$url))
+
+## Simulate a DCE ##
+n.questions <- 6
+n.respondents <- 50
+
+q.idx <- sample.int(nrow(design.nondom$alt.1), n.questions)
+respondents <- sample(unique(df$url), n.dce.respondents)
+
+qs <- design.nondom[design.nondom$q.nr %in% q.idx,]
+resp.w <- subset(df.w, url %in% respondents)[,c('url', 'pfs', 'mod', 'sev')]
+
+simul.dce <- adply(resp.w, 1, function(row) {
+    rows <- qs
+    rows$url <- row$url
+    rows$question.no <- paste0(rownames(row), '.', rows$q.nr)
+
+    ldply(unique(rows$q.nr), function(q) {
+        r <- subset(rows, q.nr %in% q)
+
+        data <- as.matrix(r[,c('PFS', 'mod', 'sev')])
+        ## convert to partial values
+        pvs <- cbind(smaa.pvf(data[,'PFS'], cutoffs=ranges['PFS',], values=c(0,1)),
+                     smaa.pvf(data[,'mod'], cutoffs=ranges['mod',], values=c(0,1)),
+                     smaa.pvf(data[,'sev'], cutoffs=ranges['sev',], values=c(0,1)))
+        colnames(pvs) <- colnames(data)
+        w <- as.matrix(subset(resp.w, url==unique(r$url))[,c('pfs', 'mod', 'sev')])
+        vals <- w %*% t(pvs)
+        r$choice <- if(vals[1] > vals[2]) c(1, 0) else c(0, 1)
+        r
+    })
+}, .expand=FALSE)
+simul.dce$idx <- paste0(simul.dce$url, '.', simul.dce$question.no)
+
+mdata <- mlogit.data(simul.dce, choice='choice',
                      ch.id='idx',
                      id.var='url',
                      shape='long',
                      alt.var='alt')
-res <- mlogit(selected.by.subject ~ 0 + level.PFS + level.mod + level.sev,
-#              rpar=c(level.PFS='n', level.mod='n', level.sev='n'),
+res <- mlogit(choice ~ 0 + PFS + mod + sev,
               data=mdata)
-
-## Normalize weights to scale
-scales <- c(diff(range(df$level.PFS)), diff(range(df$level.mod)), diff(range(df$level.sev)))
-norm.to.scale <- abs(as.matrix(res$coefficients) * scales)
-norm.weights <- norm.to.scale / sum(norm.to.scale)
-
-print(summary(res))
-print(norm.weights)
-
-## L^ma Design
-design <- Lma.design(attribute.names=list(
-                         'pfs'=c('50', '60', '70', '80', '90'),
-                         'mod'=c('45', '55', '65', '75', '85'),
-                         'sev'=c('20', '35', '50', '65', '80')),
-                     continuous.attributes=c('pfs', 'mod', 'sev'),
-                     nalternatives=2,
-                     nblocks=1,
-                     seed=1911)
 
