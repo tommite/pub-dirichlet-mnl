@@ -38,45 +38,72 @@ ranges[2:3,] <- ranges[2:3,c(2,1)] # inverse mod,sev to get correct preference d
 ## Estimate a dirichlet distribution from the weight data ##
 dir.pars <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
 
-n.dce.respondents <- length(unique(df$url))
+###
+#' Simulates a DCE.
+#'
+#' @param n.questions Number of questions each respondent answers. These are
+#' randomly selected from the set of all questions
+#' @param n.dce.respondents Number of respondents, sampled randomly from the
+#' pool in the original study.
+#'  @param return DCE results as from mlogit
+##
+simulate.dce <- function(n.questions=6, n.dce.respondents=50) {
+    stopifnot(n.dce.respondents <= length(unique(df$url))) # PRECOND
+    stopifnot(n.dce.respondents > 0)
 
-## Simulate a DCE ##
-n.questions <- 6
-n.respondents <- 50
+    q.idx <- sample(unique(design.nondom$q.nr), n.questions)
+    respondents <- sample(unique(df$url), n.dce.respondents)
 
-q.idx <- sample.int(nrow(design.nondom$alt.1), n.questions)
-respondents <- sample(unique(df$url), n.dce.respondents)
+    qs <- design.nondom[design.nondom$q.nr %in% q.idx,]
+    resp.w <- subset(df.w, url %in% respondents)[,c('url', 'pfs', 'mod', 'sev')]
 
-qs <- design.nondom[design.nondom$q.nr %in% q.idx,]
-resp.w <- subset(df.w, url %in% respondents)[,c('url', 'pfs', 'mod', 'sev')]
+    design.matrix <- adply(resp.w, 1, function(row) {
+        rows <- qs
+        rows$url <- row$url
+        rows$question.no <- paste0(rownames(row), '.', rows$q.nr)
 
-simul.dce <- adply(resp.w, 1, function(row) {
-    rows <- qs
-    rows$url <- row$url
-    rows$question.no <- paste0(rownames(row), '.', rows$q.nr)
+        ldply(unique(rows$q.nr), function(q) {
+            r <- subset(rows, q.nr %in% q)
 
-    ldply(unique(rows$q.nr), function(q) {
-        r <- subset(rows, q.nr %in% q)
-
-        data <- as.matrix(r[,c('PFS', 'mod', 'sev')])
-        ## convert to partial values
-        pvs <- cbind(smaa.pvf(data[,'PFS'], cutoffs=ranges['PFS',], values=c(0,1)),
-                     smaa.pvf(data[,'mod'], cutoffs=ranges['mod',], values=c(0,1)),
-                     smaa.pvf(data[,'sev'], cutoffs=ranges['sev',], values=c(0,1)))
-        colnames(pvs) <- colnames(data)
-        w <- as.matrix(subset(resp.w, url==unique(r$url))[,c('pfs', 'mod', 'sev')])
+            data <- as.matrix(r[,c('PFS', 'mod', 'sev')])
+            ## convert to partial values
+            pvs <- cbind(smaa.pvf(data[,'PFS'], cutoffs=ranges['PFS',], values=c(0,1)),
+                         smaa.pvf(data[,'mod'], cutoffs=ranges['mod',], values=c(0,1)),
+                         smaa.pvf(data[,'sev'], cutoffs=ranges['sev',], values=c(0,1)))
+            colnames(pvs) <- colnames(data)
+            w <- as.matrix(subset(resp.w, url==unique(r$url))[,c('pfs', 'mod', 'sev')])
         vals <- w %*% t(pvs)
-        r$choice <- if(vals[1] > vals[2]) c(1, 0) else c(0, 1)
-        r
-    })
-}, .expand=FALSE)
-simul.dce$idx <- paste0(simul.dce$url, '.', simul.dce$question.no)
+            r$choice <- if(vals[1] > vals[2]) c(1, 0) else c(0, 1)
+            r
+        })
+    }, .expand=FALSE)
+    design.matrix$idx <- paste0(design.matrix$url, '.', design.matrix$question.no)
 
-mdata <- mlogit.data(simul.dce, choice='choice',
-                     ch.id='idx',
-                     id.var='url',
-                     shape='long',
-                     alt.var='alt')
-res <- mlogit(choice ~ 0 + PFS + mod + sev,
-              data=mdata)
+    mdata <- mlogit.data(design.matrix, choice='choice',
+                         ch.id='idx',
+                         id.var='url',
+                         shape='long',
+                         alt.var='alt')
+    mlogit(choice ~ 0 + PFS + mod + sev,
+                  data=mdata)
+}
 
+## Error handling routine to re-do the simulation in case of error
+## due to singular design matrix (randomly bad set of questions)
+error.catch.simulate.dce <- function(n.questions=6, n.dce.respondents=50) {
+    ok <- FALSE
+    n.errs <- 0
+    while(!ok) {
+        tryCatch({
+            res <- simulate.dce(n.questions, n.dce.respondents)
+            ok <- TRUE
+        }, error=function(e) {
+            n.errs <<- n.errs + 1
+        })
+    }
+    cat(n.errs, ' errors\n')
+    list(n.questions=n.questions, n.dce.respondents=n.dce.respondents, result=res)
+}
+
+##
+res <- llply(5:50, error.catch.simulate.dce, n.questions=6)
