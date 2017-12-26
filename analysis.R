@@ -2,6 +2,10 @@ library(plyr)
 library(support.CEs)
 library(MCMCprecision)
 library(smaa)
+library(ggplot2)
+library(reshape2)
+library(gridExtra)
+library(ggthemes)
 source('load.dce.R')
 
 set.seed(1911)
@@ -90,20 +94,49 @@ simulate.dce <- function(n.questions=6, n.dce.respondents=50) {
 
 ## Error handling routine to re-do the simulation in case of error
 ## due to singular design matrix (randomly bad set of questions)
-error.catch.simulate.dce <- function(n.questions=6, n.dce.respondents=50) {
-    ok <- FALSE
+error.catch.simulate.dce <- function(n.questions=6, n.dce.respondents=50, n.dces=20) {
     n.errs <- 0
-    while(!ok) {
+    n.ok <- 0
+    resl <- list()
+    while(n.ok < n.dces) {
         tryCatch({
             res <- simulate.dce(n.questions, n.dce.respondents)
-            ok <- TRUE
+            n.ok <- n.ok + 1
+            resl[[n.ok]] <- res
         }, error=function(e) {
             n.errs <<- n.errs + 1
         })
     }
     cat(n.errs, ' errors\n')
-    list(n.questions=n.questions, n.dce.respondents=n.dce.respondents, result=res)
+    list(n.questions=n.questions, n.dce.respondents=n.dce.respondents,
+         n.errors=n.errs, results=resl)
 }
 
 ##
-res <- llply(5:50, error.catch.simulate.dce, n.questions=6)
+res <- llply(seq(from=10, to=300, by=10), error.catch.simulate.dce, n.questions=6, n.dces=20)
+
+test.stats <- ldply(res, function(y) {
+  r <- laply(y$results, function(x) {
+    b <- x$coefficients
+    std.err <- sqrt(diag(solve(-x$hessian)))
+    z <- b / std.err
+    p <- 2 * (1 - pnorm(abs(z)))
+    c(as.vector(p), y$n.questions, y$n.dce.respondents)
+  })
+  colnames(r) <- c(names(y$results[[1]]$coefficients),
+                          'n.quest', 'n.respondents')
+  r
+})
+
+df.molten <- melt(as.data.frame(test.stats),
+                  measure.vars=c(names(res[[1]]$results[[1]]$coefficients)))
+
+plots <- dlply(df.molten, 'variable', function(df.plot) {
+  df.plot$n.respondents <- factor(df.plot$n.respondents, labels=
+                                  unique(df.plot$n.respondents))
+  ggplot(df.plot, aes(x=n.respondents, y=value)) + geom_boxplot() +
+    ylab('p-value') + theme_economist() + scale_colour_economist()
+})
+
+dev.new(width=10, height=5)
+grid.arrange(plots[[1]], plots[[2]], plots[[3]], ncol=1)
