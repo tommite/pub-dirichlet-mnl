@@ -134,7 +134,8 @@ df.molten <- melt(as.data.frame(test.stats),
 plots <- dlply(df.molten, 'variable', function(df.plot) {
   df.plot$n.respondents <- factor(df.plot$n.respondents, labels=
                                   unique(df.plot$n.respondents))
-  ggplot(df.plot, aes(x=n.respondents, y=value)) + geom_boxplot() +
+  ggplot(df.plot, aes(x=n.respondents, y=value)) +
+    geom_boxplot(outlier.colour='red', outlier.shape=20) +
     ylab('p-value') + theme_economist() + scale_colour_economist() +
       ggtitle(unique(df.plot$variable))
 })
