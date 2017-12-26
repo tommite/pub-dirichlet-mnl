@@ -135,8 +135,9 @@ plots <- dlply(df.molten, 'variable', function(df.plot) {
   df.plot$n.respondents <- factor(df.plot$n.respondents, labels=
                                   unique(df.plot$n.respondents))
   ggplot(df.plot, aes(x=n.respondents, y=value)) + geom_boxplot() +
-    ylab('p-value') + theme_economist() + scale_colour_economist()
+    ylab('p-value') + theme_economist() + scale_colour_economist() +
+      ggtitle(unique(df.plot$variable))
 })
 
-dev.new(width=10, height=5)
+dev.new(width=10, height=6)
 grid.arrange(plots[[1]], plots[[2]], plots[[3]], ncol=1)
