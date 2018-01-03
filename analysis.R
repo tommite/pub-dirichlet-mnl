@@ -10,8 +10,6 @@ source('load.dce.R')
 
 set.seed(1911)
 
-## Can I commit?
-
 ## Generate L^ma non-dominated design ##
 attribute.names <- list('PFS'=sort(unique(df$level.PFS)),
                         'mod'=sort(unique(df$level.mod)),
@@ -112,37 +110,59 @@ error.catch.simulate.dce <- function(n.questions=6, n.dce.respondents=50, n.dces
          n.errors=n.errs, results=resl)
 }
 
-##
-res <- llply(seq(from=10, to=300, by=10), error.catch.simulate.dce, n.questions=6, n.dces=20)
+## vary number of respondents
+res.vary.n <- llply(seq(from=10, to=300, by=10), error.catch.simulate.dce, n.questions=6, n.dces=20)
+## vary number of questions
+res.vary.q <- llply(seq(from=3, to=nrow(design.nondom)/2, by=1), error.catch.simulate.dce,
+                    n.dce.respondents=200, n.dces=20)
 
-test.stats <- ldply(res, function(y) {
-  r <- laply(y$results, function(x) {
-    b <- x$coefficients
-    std.err <- sqrt(diag(solve(-x$hessian)))
-    z <- b / std.err
-    p <- 2 * (1 - pnorm(abs(z)))
-    c(as.vector(p), y$n.questions, y$n.dce.respondents)
-  })
-  colnames(r) <- c(names(y$results[[1]]$coefficients),
-                          'n.quest', 'n.respondents')
-  r
-})
+test.stats.p <- function(res) {
+    ldply(res, function(y) {
+        r <- laply(y$results, function(x) {
+            b <- x$coefficients
+            std.err <- sqrt(diag(solve(-x$hessian)))
+            z <- b / std.err
+            p <- 2 * (1 - pnorm(abs(z)))
+            c(as.vector(p), y$n.questions, y$n.dce.respondents)
+        })
+        colnames(r) <- c(names(y$results[[1]]$coefficients),
+                         'n.quest', 'n.respondents')
+        r
+    })
+}
 
-df.molten <- melt(as.data.frame(test.stats),
-                  measure.vars=c(names(res[[1]]$results[[1]]$coefficients)))
+test.stats.vary.n <- test.stats.p(res.vary.n)
+test.stats.vary.q <- test.stats.p(res.vary.q)
+
+## Plot test stats vary n respondents ##
+df.molten <- melt(as.data.frame(test.stats.vary.n),
+                  measure.vars=c(names(res.vary.n[[1]]$results[[1]]$coefficients)))
 
 plots <- dlply(df.molten, 'variable', function(df.plot) {
-  df.plot$n.respondents <- factor(df.plot$n.respondents, labels=
-                                  unique(df.plot$n.respondents))
-  ggplot(df.plot, aes(x=n.respondents, y=value)) +
-    geom_boxplot(outlier.colour='red', outlier.shape=20) +
-    ylab('p-value') + theme_economist() + scale_colour_economist() +
-      ggtitle(unique(df.plot$variable))
+    df.plot$n.respondents <- factor(df.plot$n.respondents,
+                                    labels=unique(df.plot$n.respondents))
+    ggplot(df.plot, aes(x=n.respondents, y=value)) +
+        geom_boxplot(outlier.colour='red', outlier.shape=20) +
+        ylab('p-value') + theme_economist() + scale_colour_economist() +
+        ggtitle(unique(df.plot$variable))
 })
-
 dev.new(width=10, height=6)
 grid.arrange(plots[[1]], plots[[2]], plots[[3]], ncol=1)
 
+## Plot test stats vary n questions
+df.molten.q <- melt(as.data.frame(test.stats.vary.q),
+                  measure.vars=c(names(res.vary.n[[1]]$results[[1]]$coefficients)))
+
+plots.q <- dlply(df.molten.q, 'variable', function(df.plot) {
+    df.plot$n.quest <- factor(df.plot$n.quest,
+                              labels=unique(df.plot$n.quest))
+    ggplot(df.plot, aes(x=n.quest, y=value)) +
+        geom_boxplot(outlier.colour='red', outlier.shape=20) +
+        ylab('p-value') + theme_economist() + scale_colour_economist() +
+        ggtitle(unique(df.plot$variable))
+})
+dev.new(width=8, height=6)
+grid.arrange(plots.q[[1]], plots.q[[2]], plots.q[[3]], ncol=1)
+
 ## TODO: plot normalized weights per attribute (boxplots) + means from Douwe's study
-## TODO: vary the number of questions
-## Plot dirichlet means + concentration parameter estimates
+## TODO: Plot dirichlet means + concentration parameter estimates
