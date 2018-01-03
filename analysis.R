@@ -142,3 +142,7 @@ plots <- dlply(df.molten, 'variable', function(df.plot) {
 
 dev.new(width=10, height=6)
 grid.arrange(plots[[1]], plots[[2]], plots[[3]], ncol=1)
+
+## TODO: plot normalized weights per attribute (boxplots) + means from Douwe's study
+## TODO: vary the number of questions
+## Plot dirichlet means + concentration parameter estimates
