@@ -39,3 +39,7 @@ alt.vars <- c('A', 'B')
 df[,'alt'] <- rep(alt.vars, times=nrow(df) / length(alt.vars))
 
 df <- df[,c(2:7, 22, 23)]
+
+## Calculate population weight average
+true.w <- colMeans(df.w[,c('pfs', 'mod', 'sev')])
+names(true.w) <- c('PFS', 'mod', 'sev') # compatible names
