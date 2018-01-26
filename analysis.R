@@ -43,9 +43,10 @@ ranges[2:3,] <- ranges[2:3,c(2,1)] # inverse mod,sev to get correct preference d
 #' randomly selected from the set of all questions
 #' @param n.dce.respondents Number of respondents, sampled randomly from the
 #' pool in the original study.
+#' @param rpl if random parameter logit is to be used (TRUE) or not (FALSE)
 #' @return DCE results as from mlogit
 ##
-simulate.dce <- function(n.questions=6, n.dce.respondents=50) {
+simulate.dce <- function(n.questions=6, n.dce.respondents=50, rpl=FALSE) {
     stopifnot(n.dce.respondents <= length(unique(df$url))) # PRECOND
     stopifnot(n.dce.respondents > 0)
 
@@ -82,19 +83,25 @@ simulate.dce <- function(n.questions=6, n.dce.respondents=50) {
                          id.var='url',
                          shape='long',
                          alt.var='alt')
-    mlogit(choice ~ 0 + PFS + mod + sev,
-                  data=mdata)
+    if (rpl) {
+        mlogit(choice ~ 0 + PFS + mod + sev,
+               rpar=c(PFS='n', mod='n', sev='n'),
+               data=mdata)
+    } else {
+        mlogit(choice ~ 0 + PFS + mod + sev,
+               data=mdata)
+    }
 }
 
 ## Error handling routine to re-do the simulation in case of error
 ## due to singular design matrix (randomly bad set of questions)
-error.catch.simulate.dce <- function(n.questions=6, n.dce.respondents=50, n.dces=20) {
+error.catch.simulate.dce <- function(n.questions=6, n.dce.respondents=50, n.dces=20, rpl) {
     n.errs <- 0
     n.ok <- 0
     resl <- list()
     while(n.ok < n.dces) {
         tryCatch({
-            res <- simulate.dce(n.questions, n.dce.respondents)
+            res <- simulate.dce(n.questions, n.dce.respondents, rpl)
             n.ok <- n.ok + 1
             resl[[n.ok]] <- res
         }, error=function(e) {
@@ -108,18 +115,26 @@ error.catch.simulate.dce <- function(n.questions=6, n.dce.respondents=50, n.dces
 
 ##
 #' Constructs a normalized weight vector from DCE coefficients
-#'
+##
 coeff.to.w <- function(b) {
     w <- b * aaply(ranges, 1, diff)
     w <- abs(w)
     w / sum(w)
 }
 
+### MNL ANALYSES ###
 ## vary number of respondents
-res.vary.n <- llply(seq(from=10, to=300, by=10), error.catch.simulate.dce, n.questions=6, n.dces=20)
+res.vary.n <- llply(seq(from=10, to=300, by=10), error.catch.simulate.dce, n.questions=6, n.dces=20, rpl=FALSE)
 ## vary number of questions
 res.vary.q <- llply(seq(from=3, to=nrow(design.nondom)/2, by=1), error.catch.simulate.dce,
-                    n.dce.respondents=200, n.dces=20)
+                    n.dce.respondents=200, n.dces=20, rpl=FALSE)
+
+### RPL ANALYSES ###
+## vary number of respondents
+rpl.res.vary.n <- llply(seq(from=10, to=300, by=10), error.catch.simulate.dce, n.questions=6, n.dces=20, rpl=TRUE)
+## vary number of questions
+rpl.res.vary.q <- llply(seq(from=3, to=nrow(design.nondom)/2, by=1), error.catch.simulate.dce,
+                    n.dce.respondents=200, n.dces=20, rpl=TRUE)
 
 test.stats.p <- function(res) {
     ldply(res, function(y) {
