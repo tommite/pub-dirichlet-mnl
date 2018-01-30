@@ -51,7 +51,7 @@ simulate.dce <- function(n.questions=6, n.dce.respondents=50, rpl=FALSE) {
     stopifnot(n.dce.respondents > 0)
 
     q.idx <- sample(unique(design.nondom$q.nr), n.questions)
-    respondents <- sample(unique(df$url), n.dce.respondents)
+    respondents <- sample(unique(df$url), n.dce.respondents, replace=TRUE)
 
     qs <- design.nondom[design.nondom$q.nr %in% q.idx,]
     resp.w <- subset(df.w, url %in% respondents)[,c('url', 'pfs', 'mod', 'sev')]
@@ -86,7 +86,8 @@ simulate.dce <- function(n.questions=6, n.dce.respondents=50, rpl=FALSE) {
     if (rpl) {
         mlogit(choice ~ 0 + PFS + mod + sev,
                rpar=c(PFS='n', mod='n', sev='n'),
-               data=mdata)
+               data=mdata,
+               panel=TRUE)
     } else {
         mlogit(choice ~ 0 + PFS + mod + sev,
                data=mdata)
