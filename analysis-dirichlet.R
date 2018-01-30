@@ -37,7 +37,7 @@ calc.covm <- function(dir.pars, names=c('pfs', 'mod', 'sev'), n=length(names)) {
 ## Estimate a dirichlet distribution from the weight data ##
 res <- llply(seq(from=10, to=nrow(df.w), by=20), function(nr.samples) {
     rlply(20, {
-        w <- df.w[sample.int(nrow(df.w), nr.samples),c('pfs', 'mod', 'sev')]
+        w <- df.w[sample.int(nrow(df.w), nr.samples, replace=TRUE),c('pfs', 'mod', 'sev')]
         dir.pars <- dirichlet.mle(w)
         n <- length(dir.pars$alpha)
         covm <- calc.covm(dir.pars)
