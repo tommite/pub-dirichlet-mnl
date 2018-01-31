@@ -86,7 +86,8 @@ simulate.dce <- function(n.questions=6, n.dce.respondents=50, rpl=FALSE) {
     if (rpl) {
         mlogit(choice ~ 0 + PFS + mod + sev,
                rpar=c(PFS='n', mod='n', sev='n'),
-               data=mdata)
+               data=mdata,
+               panel=TRUE)
     } else {
         mlogit(choice ~ 0 + PFS + mod + sev,
                data=mdata)
