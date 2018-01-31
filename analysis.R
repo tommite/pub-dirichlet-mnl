@@ -50,8 +50,8 @@ simulate.dce <- function(n.questions=6, n.dce.respondents=50, rpl=FALSE) {
     stopifnot(n.dce.respondents <= length(unique(df$url))) # PRECOND
     stopifnot(n.dce.respondents > 0)
 
-    q.idx <- sample(unique(design.nondom$q.nr), n.questions)
-    respondents <- sample(unique(df$url), n.dce.respondents)
+    q.idx <- sample(unique(design.nondom$q.nr), n.questions, replace=FALSE)
+    respondents <- sample(unique(df$url), n.dce.respondents, replace=TRUE)
 
     qs <- design.nondom[design.nondom$q.nr %in% q.idx,]
     resp.w <- subset(df.w, url %in% respondents)[,c('url', 'pfs', 'mod', 'sev')]
