@@ -8,7 +8,6 @@ library(MCMCprecision)
 source('load.dce.R')
 set.seed(1911)
 
-
 ## Calculate dirichlet covariance
 #' From https://en.wikipedia.org/wiki/Dirichlet_distribution
 ##

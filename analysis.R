@@ -5,7 +5,9 @@ library(ggplot2)
 library(reshape2)
 library(gridExtra)
 library(ggthemes)
+library(MCMCprecision)
 source('load.dce.R')
+source('dirichlet.R')
 
 set.seed(1911)
 
@@ -34,24 +36,25 @@ design.nondom$sev <- as.numeric(as.vector(design.nondom$sev))
 
 ranges <- laply(attribute.names, range)
 rownames(ranges) <- names(attribute.names)
-ranges[2:3,] <- ranges[2:3,c(2,1)] # inverse mod,sev to get correct preference direction
+
+## Fit models for the maximum possible data set
+true.res <- simulate.dce(n.questions=16, n.respondents=560)
 
 ###
-#' Simulates a DCE.
+#' Simulates a DCE with the three models.
 #'
 #' @param n.questions Number of questions each respondent answers. These are
 #' randomly selected from the set of all questions
-#' @param n.dce.respondents Number of respondents, sampled randomly from the
+#' @param n.respondents Number of respondents, sampled randomly from the
 #' pool in the original study.
-#' @param rpl if random parameter logit is to be used (TRUE) or not (FALSE)
-#' @return DCE results as from mlogit
+#' @return list of results from the 3 models
 ##
-simulate.dce <- function(n.questions=6, n.dce.respondents=50, rpl=FALSE) {
-    stopifnot(n.dce.respondents <= length(unique(df$url))) # PRECOND
-    stopifnot(n.dce.respondents > 0)
+simulate.dce <- function(n.questions=6, n.respondents=50) {
+    stopifnot(n.respondents <= length(unique(df$url))) # PRECOND
+    stopifnot(n.respondents > 0)
 
     q.idx <- sample(unique(design.nondom$q.nr), n.questions, replace=FALSE)
-    respondents <- sample(unique(df$url), n.dce.respondents, replace=TRUE)
+    respondents <- sample(unique(df$url), n.respondents, replace=TRUE)
 
     qs <- design.nondom[design.nondom$q.nr %in% q.idx,]
     resp.w <- subset(df.w, url %in% respondents)[,c('url', 'pfs', 'mod', 'sev')]
@@ -67,11 +70,11 @@ simulate.dce <- function(n.questions=6, n.dce.respondents=50, rpl=FALSE) {
             data <- as.matrix(r[,c('PFS', 'mod', 'sev')])
             ## convert to partial values
             pvs <- cbind(smaa.pvf(data[,'PFS'], cutoffs=ranges['PFS',], values=c(0,1)),
-                         smaa.pvf(data[,'mod'], cutoffs=ranges['mod',], values=c(0,1)),
-                         smaa.pvf(data[,'sev'], cutoffs=ranges['sev',], values=c(0,1)))
+                         smaa.pvf(data[,'mod'], cutoffs=ranges['mod',], values=c(1,0)),
+                         smaa.pvf(data[,'sev'], cutoffs=ranges['sev',], values=c(1,0)))
             colnames(pvs) <- colnames(data)
             w <- as.matrix(subset(resp.w, url==unique(r$url))[,c('pfs', 'mod', 'sev')])
-        vals <- w %*% t(pvs)
+            vals <- w %*% t(pvs)
             r$choice <- if(vals[1] > vals[2]) c(1, 0) else c(0, 1)
             r
         })
@@ -83,34 +86,42 @@ simulate.dce <- function(n.questions=6, n.dce.respondents=50, rpl=FALSE) {
                          id.var='url',
                          shape='long',
                          alt.var='alt')
-    if (rpl) {
-        mlogit(choice ~ 0 + PFS + mod + sev,
-               rpar=c(PFS='n', mod='n', sev='n'),
-               data=mdata,
-               panel=TRUE)
-    } else {
-        mlogit(choice ~ 0 + PFS + mod + sev,
-               data=mdata)
-    }
+    
+    res.rpl <- mlogit(choice ~ 0 + PFS + mod + sev,
+                      rpar=c(PFS='n', mod='n', sev='n'),
+                      data=mdata,
+                      panel=TRUE,
+                      halton=NA)
+    res.mnl <- mlogit(choice ~ 0 + PFS + mod + sev,
+                      data=mdata)
+    res.dir <- dirichlet.mle(resp.w[,c('pfs', 'mod', 'sev')])
+
+    list(mnl=res.mnl, rpl=res.rpl, dir=res.dir$alpha, respondents=respondents)
 }
 
 ## Error handling routine to re-do the simulation in case of error
 ## due to singular design matrix (randomly bad set of questions)
-error.catch.simulate.dce <- function(n.questions=6, n.dce.respondents=50, n.dces=20, rpl) {
+error.catch.simulate.dce <- function(n.questions=6, n.respondents=50, n.simul=20) {
     n.errs <- 0
     n.ok <- 0
     resl <- list()
-    while(n.ok < n.dces) {
+    while(n.ok < n.simul) {
+        ## Somehow the same seed is being used in different calls (??)
+        ## So need to manually set it
+        seed <- n.errs * 10000 + n.questions*1000 + n.respondents*100 + n.simul*10 + n.ok
+        set.seed(seed)        
         tryCatch({
-            res <- simulate.dce(n.questions, n.dce.respondents, rpl)
+            res <- simulate.dce(n.questions, n.respondents)
             n.ok <- n.ok + 1
             resl[[n.ok]] <- res
         }, error=function(e) {
             n.errs <<- n.errs + 1
+            cat('(seed ', seed, '): ', e$message, '\n', sep='')
         })
     }
-    cat(n.errs, ' errors\n')
-    list(n.questions=n.questions, n.dce.respondents=n.dce.respondents,
+    cat('[', n.questions, ' questions | ', n.respondents, ' respondents]: ',
+        n.errs, ' errors\n', sep='')
+    list(n.questions=n.questions, n.respondents=n.respondents,
          n.errors=n.errs, results=resl)
 }
 
@@ -118,92 +129,83 @@ error.catch.simulate.dce <- function(n.questions=6, n.dce.respondents=50, n.dces
 #' Constructs a normalized weight vector from DCE coefficients
 ##
 coeff.to.w <- function(b) {
-    w <- b * aaply(ranges, 1, diff)
-    w <- abs(w)
-    w / sum(w)
+    rng.sizes <- aaply(ranges, 1, diff)
+    w <- b * rng.sizes
+    w / sum(rng.sizes)
 }
 
-### MNL ANALYSES ###
-## vary number of respondents
-res.vary.n <- llply(seq(from=10, to=300, by=10), error.catch.simulate.dce, n.questions=6, n.dces=20, rpl=FALSE)
-## vary number of questions
-res.vary.q <- llply(seq(from=3, to=nrow(design.nondom)/2, by=1), error.catch.simulate.dce,
-                    n.dce.respondents=200, n.dces=20, rpl=FALSE)
+##
+#' function for computing the squared error
+##
+MSE <- function(x, y) {
+    stopifnot(length(x) == length(y))
+    sum((x - y)^2) / length(x)
+}
 
-### RPL ANALYSES ###
 ## vary number of respondents
-rpl.res.vary.n <- llply(seq(from=10, to=300, by=10), error.catch.simulate.dce, n.questions=6, n.dces=20, rpl=TRUE)
-## vary number of questions
-rpl.res.vary.q <- llply(seq(from=3, to=nrow(design.nondom)/2, by=1), error.catch.simulate.dce,
-                    n.dce.respondents=200, n.dces=20, rpl=TRUE)
+res.vary.n <- llply(seq(from=20, to=500, by=20), error.catch.simulate.dce,
+                    n.questions=6, n.simul=20)
 
-test.stats.p <- function(res) {
+test.stats.p <- function(res, type) {
     ldply(res, function(y) {
         r <- laply(y$results, function(x) {
-            b <- x$coefficients
-            std.err <- sqrt(diag(solve(-x$hessian)))
-            z <- b / std.err
-            p <- 2 * (1 - pnorm(abs(z)))
-            w <- coeff.to.w(b)
-            c(as.vector(p), as.vector(w), y$n.questions, y$n.dce.respondents)
+            x <- x[[type]]
+            b <- x$coefficients[1:3]
+            w <- coeff.to.w(b)            
+            p <- c(1, 1, 1)
+            tryCatch({
+                std.err <- sqrt(diag(solve(-x$hessian[1:3,1:3])))
+                z <- b / std.err
+                p <- 2 * (1 - pnorm(abs(z)))
+            }, error=function(e) { })
+            c(as.vector(p), as.vector(w), y$n.questions, y$n.respondents)
         })
-        colnames(r) <- c(paste0(names(y$results[[1]]$coefficients), '.p'),
-                         paste0(names(y$results[[1]]$coefficients), '.w'),
+        colnames(r) <- c(paste0(names(y$results[[1]]$mnl$coefficients), '.p'),
+                         paste0(names(y$results[[1]]$mnl$coefficients), '.w'),
                          'n.quest', 'n.respondents')
         r
     })
 }
 
-test.stats.vary.n <- test.stats.p(res.vary.n)
-test.stats.vary.q <- test.stats.p(res.vary.q)
+test.stats.mse <- function(res) {
+    ldply(res, function(y) {
+        r <- laply(y$results, function(x) {
+            dir.w <- x$dir / sum(x$dir)
+            c(MSE(x$mnl$coefficients, true.res$mnl$coefficients),
+              MSE(x$rpl$coefficients[1:3], true.res$rpl$coefficients[1:3]),
+              MSE(dir.w, true.w),
+              y$n.questions, y$n.respondents)
+        })
+        colnames(r) <- c('MSE.mnl', 'MSE.rpl', 'MSE.dir', 'n.quest', 'n.respondents')
+        r
+    })
+}
+
+test.stats.mnl <- test.stats.p(res.vary.n, 'mnl')
+test.stats.rpl <- test.stats.p(res.vary.n, 'rpl')
+test.stats.mse <- test.stats.mse(res.vary.n)
 
 ## Plot test stats vary n respondents ##
-df.molten <- melt(as.data.frame(test.stats.vary.n),
-                  measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
+df.molten.mnl <- melt(as.data.frame(test.stats.mnl),
+                      measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
+df.molten.rpl <- melt(as.data.frame(test.stats.rpl),
+                      measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
+df.molten.mse <- melt(as.data.frame(test.stats.mse),
+                  measure.vars=c('MSE.mnl', 'MSE.rpl', 'MSE.dir'))
 
-plots <- dlply(df.molten, 'variable', function(df.plot) {
-    df.plot$n.respondents <- factor(df.plot$n.respondents,
-                                    labels=unique(df.plot$n.respondents))
-    ggplot(df.plot, aes(x=n.respondents, y=value)) +
-        geom_boxplot(outlier.colour='red', outlier.shape=20) +
-        ylab('p-value') + theme_economist() + scale_colour_economist() +
-        ggtitle(unique(df.plot$variable))
-})
-dev.new(width=10, height=6)
-grid.arrange(plots[[1]], plots[[2]], plots[[3]], ncol=1)
+do.plots <- function(df.molten, y.label) {
+    plots <- dlply(df.molten, 'variable', function(df.plot) {
+        df.plot$n.respondents <- factor(df.plot$n.respondents,
+                                        labels=unique(df.plot$n.respondents))
+        ggplot(df.plot, aes(x=n.respondents, y=value)) +
+            geom_boxplot(outlier.colour='red', outlier.shape=20) +
+            ylab(y.label) + theme_economist() + scale_colour_economist() +
+            ggtitle(unique(df.plot$variable)) + ylim(0, 0.01)
+    })
+    dev.new(width=10, height=6)
+    do.call(grid.arrange, c(plots, ncol=1))
+}
 
-## Plot weights ##
-df.molten.w <- melt(as.data.frame(test.stats.vary.n),
-                    measure.vars=c('PFS.w', 'mod.w', 'sev.w'))
-
-plots.w <- dlply(df.molten.w, 'variable', function(df.plot) {
-    w.name <- substring(unique(df.plot$variable), 0, 3)
-    df.plot$n.respondents <- factor(df.plot$n.respondents,
-                                    labels=unique(df.plot$n.respondents))
-    ggplot(df.plot, aes(x=n.respondents, y=value)) +
-        geom_boxplot(outlier.colour='red', outlier.shape=20) +
-        ylab('weight') + theme_economist() + scale_colour_economist() +
-        ggtitle(w.name) +
-        geom_hline(yintercept=true.w[w.name], linetype='solid',
-                   color='darkblue', size=1)
-})
-dev.new(width=10, height=6)
-grid.arrange(plots.w[[1]], plots.w[[2]], plots.w[[3]], ncol=1)
-
-## Plot test stats vary n questions
-df.molten.q <- melt(as.data.frame(test.stats.vary.q),
-                  measure.vars=c(names(res.vary.n[[1]]$results[[1]]$coefficients)))
-
-plots.q <- dlply(df.molten.q, 'variable', function(df.plot) {
-    df.plot$n.quest <- factor(df.plot$n.quest,
-                              labels=unique(df.plot$n.quest))
-    ggplot(df.plot, aes(x=n.quest, y=value)) +
-        geom_boxplot(outlier.colour='red', outlier.shape=20) +
-        ylab('p-value') + theme_economist() + scale_colour_economist() +
-        ggtitle(unique(df.plot$variable))
-})
-dev.new(width=8, height=6)
-grid.arrange(plots.q[[1]], plots.q[[2]], plots.q[[3]], ncol=1)
-
-## TODO: plot normalized weights per attribute (boxplots) + means from Douwe's study
-## TODO: Plot dirichlet means + concentration parameter estimates
+do.plots(df.molten.mnl, 'p-value')
+do.plots(df.molten.rpl, 'p-value')
+do.plots(subset(df.molten.mse, variable %in% c('MSE.mnl', 'MSE.dir')), 'MSE')
