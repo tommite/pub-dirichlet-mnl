@@ -39,6 +39,8 @@ rownames(ranges) <- names(attribute.names)
 
 ## Fit models for the maximum possible data set
 true.res <- simulate.dce(n.questions=16, n.respondents=560)
+dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
+dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
 
 ###
 #' Simulates a DCE with the three models.
@@ -173,7 +175,7 @@ test.stats.mse <- function(res) {
             dir.w <- x$dir / sum(x$dir)
             c(MSE(x$mnl$coefficients, true.res$mnl$coefficients),
               MSE(x$rpl$coefficients[1:3], true.res$rpl$coefficients[1:3]),
-              MSE(dir.w, true.w),
+              MSE(dir.w, dir.fullsample.w),
               y$n.questions, y$n.respondents)
         })
         colnames(r) <- c('MSE.mnl', 'MSE.rpl', 'MSE.dir', 'n.quest', 'n.respondents')
