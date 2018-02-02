@@ -37,11 +37,6 @@ design.nondom$sev <- as.numeric(as.vector(design.nondom$sev))
 ranges <- laply(attribute.names, range)
 rownames(ranges) <- names(attribute.names)
 
-## Fit models for the maximum possible data set
-true.res <- simulate.dce(n.questions=16, n.respondents=560)
-dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
-dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
-
 ###
 #' Simulates a DCE with the three models.
 #'
@@ -88,7 +83,7 @@ simulate.dce <- function(n.questions=6, n.respondents=50) {
                          id.var='url',
                          shape='long',
                          alt.var='alt')
-    
+
     res.rpl <- mlogit(choice ~ 0 + PFS + mod + sev,
                       rpar=c(PFS='n', mod='n', sev='n'),
                       data=mdata,
@@ -111,7 +106,7 @@ error.catch.simulate.dce <- function(n.questions=6, n.respondents=50, n.simul=20
         ## Somehow the same seed is being used in different calls (??)
         ## So need to manually set it
         seed <- n.errs * 10000 + n.questions*1000 + n.respondents*100 + n.simul*10 + n.ok
-        set.seed(seed)        
+        set.seed(seed)
         tryCatch({
             res <- simulate.dce(n.questions, n.respondents)
             n.ok <- n.ok + 1
@@ -144,16 +139,26 @@ MSE <- function(x, y) {
     sum((x - y)^2) / length(x)
 }
 
+## Fit models for the maximum possible data set
+true.res <- simulate.dce(n.questions=16, n.respondents=560)
+dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
+dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
+
 ## vary number of respondents
 res.vary.n <- llply(seq(from=20, to=500, by=20), error.catch.simulate.dce,
                     n.questions=6, n.simul=20)
+
+## vary number of questions and respondents
+f.pars <- expand.grid(n.questions=seq(from=5, to=nrow(design.nondom)/2, by=1),
+                      n.respondents=c(50, 100, 200, 300))
+res.vary.q <- mlply(f.pars, error.catch.simulate.dce, n.simul=20)
 
 test.stats.p <- function(res, type) {
     ldply(res, function(y) {
         r <- laply(y$results, function(x) {
             x <- x[[type]]
             b <- x$coefficients[1:3]
-            w <- coeff.to.w(b)            
+            w <- coeff.to.w(b)
             p <- c(1, 1, 1)
             tryCatch({
                 std.err <- sqrt(diag(solve(-x$hessian[1:3,1:3])))
@@ -187,13 +192,18 @@ test.stats.mnl <- test.stats.p(res.vary.n, 'mnl')
 test.stats.rpl <- test.stats.p(res.vary.n, 'rpl')
 test.stats.mse <- test.stats.mse(res.vary.n)
 
+test.q.stats.mnl <- test.stats.p(res.vary.q, 'mnl')
+test.q.stats.mse <- test.stats.mse(res.vary.q)
+
 ## Plot test stats vary n respondents ##
 df.molten.mnl <- melt(as.data.frame(test.stats.mnl),
                       measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
 df.molten.rpl <- melt(as.data.frame(test.stats.rpl),
                       measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
 df.molten.mse <- melt(as.data.frame(test.stats.mse),
-                  measure.vars=c('MSE.mnl', 'MSE.rpl', 'MSE.dir'))
+                      measure.vars=c('MSE.mnl', 'MSE.rpl', 'MSE.dir'))
+df.molten.q <- melt(as.data.frame(test.q.stats.mse),
+                    measure.vars=c('MSE.mnl', 'MSE.rpl', 'MSE.dir'))
 
 do.plots <- function(df.molten, y.label) {
     plots <- dlply(df.molten, 'variable', function(df.plot) {
@@ -208,6 +218,21 @@ do.plots <- function(df.molten, y.label) {
     do.call(grid.arrange, c(plots, ncol=1))
 }
 
+do.plots.q <- function(df.molten, y.label) {
+    plots <- dlply(df.molten, 'variable', function(df.plot) {
+        df.plot$n.quest <- factor(df.plot$n.quest,
+                                  labels=unique(df.plot$n.quest))
+        ggplot(df.plot, aes(x=n.quest, y=value)) +
+            geom_boxplot(outlier.colour='red', outlier.shape=20) +
+            ylab(y.label) + theme_economist() + scale_colour_economist() +
+            ggtitle(unique(df.plot$variable)) + ylim(0, 0.01)
+    })
+    dev.new(width=10, height=6)
+    do.call(grid.arrange, c(plots, ncol=1))
+}
+
 do.plots(df.molten.mnl, 'p-value')
 do.plots(df.molten.rpl, 'p-value')
 do.plots(subset(df.molten.mse, variable %in% c('MSE.mnl', 'MSE.dir')), 'MSE')
+do.plots.q(subset(df.molten.q, variable %in% c('MSE.mnl', 'MSE.rpl')), 'MSE')
+
