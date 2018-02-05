@@ -136,7 +136,7 @@ coeff.to.w <- function(b) {
 ##
 MSE <- function(x, y) {
     stopifnot(length(x) == length(y))
-    sum((x - y)^2) / length(x)
+    sqrt(sum((x-y)^2))
 }
 
 ## Fit models for the maximum possible data set
@@ -144,8 +144,17 @@ true.res <- simulate.dce(n.questions=16, n.respondents=560)
 dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
 dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
 
+## vary both number of respondents and number of questions
+n.resp.seq <- c(seq(from=10, to=200, by=10),
+                seq(from=220, to=300, by=20),
+                seq(from=350, to=500, by=50))
+f.pars.all <- expand.grid(n.questions=seq(from=5, to=nrow(design.nondom)/2, by=1),
+                      n.respondents=n.resp.seq)
+res.vary <- mlply(f.pars.all, error.catch.simulate.dce, n.simul=20)
+
+
 ## vary number of respondents
-res.vary.n <- llply(seq(from=20, to=500, by=20), error.catch.simulate.dce,
+res.vary.n <- llply(seq(from=20, to=300, by=20), error.catch.simulate.dce,
                     n.questions=6, n.simul=20)
 
 ## vary number of questions and respondents
@@ -190,7 +199,7 @@ test.stats.mse <- function(res) {
 
 test.stats.mnl <- test.stats.p(res.vary.n, 'mnl')
 test.stats.rpl <- test.stats.p(res.vary.n, 'rpl')
-test.stats.mse <- test.stats.mse(res.vary.n)
+test.n.stats.mse <- test.stats.mse(res.vary.n)
 
 test.q.stats.mnl <- test.stats.p(res.vary.q, 'mnl')
 test.q.stats.mse <- test.stats.mse(res.vary.q)
@@ -200,39 +209,74 @@ df.molten.mnl <- melt(as.data.frame(test.stats.mnl),
                       measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
 df.molten.rpl <- melt(as.data.frame(test.stats.rpl),
                       measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
-df.molten.mse <- melt(as.data.frame(test.stats.mse),
+df.molten.mse <- melt(as.data.frame(test.n.stats.mse),
                       measure.vars=c('MSE.mnl', 'MSE.rpl', 'MSE.dir'))
 df.molten.q <- melt(as.data.frame(test.q.stats.mse),
                     measure.vars=c('MSE.mnl', 'MSE.rpl', 'MSE.dir'))
 
-do.plots <- function(df.molten, y.label) {
+do.plots <- function(df.molten, y.label, ymax=0.01) {
     plots <- dlply(df.molten, 'variable', function(df.plot) {
         df.plot$n.respondents <- factor(df.plot$n.respondents,
                                         labels=unique(df.plot$n.respondents))
         ggplot(df.plot, aes(x=n.respondents, y=value)) +
             geom_boxplot(outlier.colour='red', outlier.shape=20) +
             ylab(y.label) + theme_economist() + scale_colour_economist() +
-            ggtitle(unique(df.plot$variable)) + ylim(0, 0.01)
+            ggtitle(unique(df.plot$variable)) + ylim(0, ymax)
     })
-    dev.new(width=10, height=6)
+    dev.new(width=10, height=8)
     do.call(grid.arrange, c(plots, ncol=1))
 }
 
 do.plots.q <- function(df.molten, y.label) {
-    plots <- dlply(df.molten, 'variable', function(df.plot) {
+    plots <- dlply(df.molten, 'n.respondents', function(df.plot) {
         df.plot$n.quest <- factor(df.plot$n.quest,
                                   labels=unique(df.plot$n.quest))
         ggplot(df.plot, aes(x=n.quest, y=value)) +
             geom_boxplot(outlier.colour='red', outlier.shape=20) +
             ylab(y.label) + theme_economist() + scale_colour_economist() +
-            ggtitle(unique(df.plot$variable)) + ylim(0, 0.01)
+            ggtitle(paste0('n.respondents=',unique(df.plot$n.respondents))) + ylim(0, 0.02)
     })
-    dev.new(width=10, height=6)
+    dev.new(width=6, height=10)
     do.call(grid.arrange, c(plots, ncol=1))
 }
 
-do.plots(df.molten.mnl, 'p-value')
-do.plots(df.molten.rpl, 'p-value')
-do.plots(subset(df.molten.mse, variable %in% c('MSE.mnl', 'MSE.dir')), 'MSE')
-do.plots.q(subset(df.molten.q, variable %in% c('MSE.mnl', 'MSE.rpl')), 'MSE')
+do.plots(df.molten.mnl, 'p-value', 0.5)
+do.plots(df.molten.rpl, 'p-value', 0.5)
+do.plots(subset(df.molten.mse, variable %in% c('MSE.mnl', 'MSE.dir')), 'MSE', 0.05)
+do.plots.q(subset(df.molten.q, variable=='MSE.mnl'), 'MSE')
+
+## Do stats for the abstract ##
+res.mse.stats <- ldply(c('mnl', 'rpl', 'dir'), function(model) {
+    my.df <- subset(df.molten.q, variable==paste0('MSE.', model))
+    cbind(ddply(my.df, c('n.questions', 'n.respondents'), summarise,
+          mean=mean(value^2), sd=sd(value^2),
+          upb=mean(value^2)+1.96*sd(value^2),
+          lob=mean(value^2)-1.96*sd(value^2)),
+          model=model)
+})
+res.dir.stats <- ddply(subset(df.molten.mse, variable=='MSE.dir'), 'n.respondents', summarise,
+                       mean=mean(value^2), sd=sd(value^2),
+                       upb=mean(value^2)+1.96*sd(value^2),
+                       lob=mean(value^2)-1.96*sd(value^2))
+
+## P-value stats
+res.p.mnl <- ddply(subset(df.molten.mnl, variable=='mod.p'),
+                   c('n.quest', 'n.respondents'), summarise,
+                   meanmodp=mean(value),
+                   modp02=sum(value>0.02))
+
+res.p.rpl <- ddply(subset(df.molten.rpl, variable=='mod.p'),
+                   c('n.quest', 'n.respondents'), summarise,
+                   meanmodp=mean(value),
+                   modp02=sum(value>0.02))
+
+## for MNL/RPL
+print(subset(res.mse.stats, model == 'mnl' & n.questions==6 & upb < 0.01)) # which are not ok
+print(subset(res.mse.stats, model == 'mnl' & upb >= 0.01)) # which are not ok
+print(subset(res.mse.stats, model == 'rpl' & upb < 0.01)) # which are ok
+
+## for DIR
+print(subset(res.dir.stats, upb < 0.01))
+print(subset(res.dir.stats, upb < 0.005))
+print(subset(res.dir.stats, upb < 0.001))      
 
