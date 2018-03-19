@@ -128,19 +128,19 @@ error.catch.simulate.dce <- function(n.questions=6, n.respondents=50, n.simul=20
 coeff.to.w <- function(b) {
     rng.sizes <- aaply(ranges, 1, diff)
     w <- b * rng.sizes
-    w / sum(rng.sizes)
+    abs(w / sum(abs(w)))
 }
 
 ##
-#' function for computing the squared error
+#' function for computing the mean squared error
 ##
 MSE <- function(x, y) {
     stopifnot(length(x) == length(y))
-    sqrt(sum((x-y)^2))
+    mean((x-y)^2)
 }
 
 ## Fit models for the maximum possible data set
-true.res <- simulate.dce(n.questions=16, n.respondents=560)
+rum.fullsample <- simulate.dce(n.questions=16, n.respondents=560)
 dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
 dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
 
@@ -151,7 +151,6 @@ n.resp.seq <- c(seq(from=10, to=200, by=10),
 f.pars.all <- expand.grid(n.questions=seq(from=5, to=nrow(design.nondom)/2, by=1),
                       n.respondents=n.resp.seq)
 res.vary <- mlply(f.pars.all, error.catch.simulate.dce, n.simul=20)
-
 
 ## vary number of respondents
 res.vary.n <- llply(seq(from=20, to=300, by=20), error.catch.simulate.dce,
@@ -278,5 +277,5 @@ print(subset(res.mse.stats, model == 'rpl' & upb < 0.01)) # which are ok
 ## for DIR
 print(subset(res.dir.stats, upb < 0.01))
 print(subset(res.dir.stats, upb < 0.005))
-print(subset(res.dir.stats, upb < 0.001))      
+print(subset(res.dir.stats, upb < 0.001))
 
