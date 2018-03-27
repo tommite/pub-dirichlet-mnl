@@ -139,10 +139,65 @@ MSE <- function(x, y) {
     mean((x-y)^2)
 }
 
+## Binary MNL choice probability function
+ch.prob <- function(u1, u2) {
+    exp(u1) / (exp(u1) + exp(u2))
+}
+
 ## Fit models for the maximum possible data set
 rum.fullsample <- simulate.dce(n.questions=16, n.respondents=560)
 dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
 dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
+
+n.dir.samples <- 1E3
+
+## Add choice probabilities to the design
+design.chprob <- ddply(design.nondom, ~q.nr, function(q) {
+    utils <- aaply(q, 1, function(r) {
+        a1 <- t(as.matrix(r[,c('PFS', 'mod', 'sev')]))
+        a2 <- as.matrix(rum.fullsample$mnl$coefficients)
+        t(a1) %*% a2
+    }, .expand=FALSE)
+    probs <- c(ch.prob(utils[1], utils[2]), ch.prob(utils[2], utils[1]))
+    ## calculate dirichlet probabilities
+    dir.w <- rdirichlet(n.dir.samples, dir.fullsample$alpha)
+
+    pvs <- cbind(smaa.pvf(q[,'PFS'], cutoffs=ranges['PFS',], values=c(0,1)),
+                 smaa.pvf(q[,'mod'], cutoffs=ranges['mod',], values=c(1,0)),
+                 smaa.pvf(q[,'sev'], cutoffs=ranges['sev',], values=c(1,0)))
+    dir.vals <- dir.w %*% t(pvs)
+    a1.dir.prob <- sum(aaply(dir.vals, 1, which.max) == 1) / n.dir.samples
+
+    cbind(q, u.mnl=utils, p.mnl=probs, p.dir=c(a1.dir.prob, 1-a1.dir.prob))
+})
+
+simulate.dce.distr <- function(n.questions=6, n.respondents=50) {
+    stopifnot(n.respondents > 0 && n.questions > 0 && n.questions < (nrow(design.matrix)/2))
+
+    q.idx.mat <- raply(n.respondents, sample(unique(design.nondom$q.nr), n.questions, replace=FALSE))
+    q.idx <- as.vector(q.idx.mat)
+    qs <- ldply(q.idx, function(x) {subset(design.chprob, q.nr ==  x)})
+
+    design.matrix <- ldply(seq(1, nrow(qs), by=2), function(id) {
+        rows <- qs[id:(id+1),]
+        rows$idx <- paste0(id, '.', rows$q.nr)
+
+        rnd <- runif(1)
+        if (rnd <= rows[1,'p.mnl']) {
+            rows$choice <- c(1, 0)
+        } else {
+            rows$choice <- c(0, 1)
+        }
+        rows
+    })
+
+    mdata <- mlogit.data(design.matrix, choice='choice',
+                         ch.id='idx',
+                         shape='long',
+                         alt.var='alt')
+
+    mlogit(choice ~ 0 + PFS + mod + sev, data=mdata)
+}
 
 ## vary both number of respondents and number of questions
 n.resp.seq <- c(seq(from=10, to=200, by=10),
