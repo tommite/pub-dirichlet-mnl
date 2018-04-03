@@ -96,32 +96,6 @@ simulate.dce <- function(n.questions=6, n.respondents=50) {
     list(mnl=res.mnl, rpl=res.rpl, dir=res.dir$alpha, respondents=respondents)
 }
 
-## Error handling routine to re-do the simulation in case of error
-## due to singular design matrix (randomly bad set of questions)
-error.catch.simulate.dce <- function(n.questions=6, n.respondents=50, n.simul=20) {
-    n.errs <- 0
-    n.ok <- 0
-    resl <- list()
-    while(n.ok < n.simul) {
-        ## Somehow the same seed is being used in different calls (??)
-        ## So need to manually set it
-        seed <- n.errs * 10000 + n.questions*1000 + n.respondents*100 + n.simul*10 + n.ok
-        set.seed(seed)
-        tryCatch({
-            res <- simulate.dce(n.questions, n.respondents)
-            n.ok <- n.ok + 1
-            resl[[n.ok]] <- res
-        }, error=function(e) {
-            n.errs <<- n.errs + 1
-            cat('(seed ', seed, '): ', e$message, '\n', sep='')
-        })
-    }
-    cat('[', n.questions, ' questions | ', n.respondents, ' respondents]: ',
-        n.errs, ' errors\n', sep='')
-    list(n.questions=n.questions, n.respondents=n.respondents,
-         n.errors=n.errs, results=resl)
-}
-
 ##
 #' Constructs a normalized weight vector from DCE coefficients
 ##
@@ -132,11 +106,11 @@ coeff.to.w <- function(b) {
 }
 
 ##
-#' function for computing the mean squared error
+#' function for computing the error (euclidean distance)
 ##
-MSE <- function(x, y) {
+err.f <- function(x, y) {
     stopifnot(length(x) == length(y))
-    mean((x-y)^2)
+    sqrt(sum((x-y)^2))
 }
 
 ## Binary MNL choice probability function
@@ -150,6 +124,37 @@ dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
 dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
 
 n.dir.samples <- 1E3
+
+## Error handling routine to re-do the simulation in case of error
+## due to singular design matrix (randomly bad set of questions)
+error.catch.simulate <- function(n.questions=6, n.respondents=50, n.simul=20) {
+    n.errs <- 0
+    n.ok <- 0
+    resl <- list()
+    while(n.ok < n.simul) {
+        ## Somehow the same seed is being used in different calls (??)
+        ## So need to manually set it
+        seed <- n.errs * 10000 + n.questions*1000 + n.respondents*100 + n.simul*10 + n.ok
+        set.seed(seed)
+        tryCatch({
+            res <- simulate.dce.distr(n.questions, n.respondents)
+            n.ok <- n.ok + 1
+            resl[[n.ok]] <- res
+        }, error=function(e) {
+            n.errs <<- n.errs + 1
+            cat('(seed ', seed, '): ', e$message, '\n', sep='')
+        })
+    }
+    ## Simulate from dirichlet
+    res.dir <- raply(n.simul, {
+      dir.w <- rdirichlet(n.respondents, dir.fullsample$alpha)
+      dirichlet.mle(dir.w)$alpha
+    })
+    cat('[', n.questions, ' questions | ', n.respondents, ' respondents]: ',
+        n.errs, ' errors\n', sep='')
+    list(n.questions=n.questions, n.respondents=n.respondents,
+         n.errors=n.errs, res.dce=resl, res.dir=res.dir)
+}
 
 ## Add choice probabilities to the design
 design.chprob <- ddply(design.nondom, ~q.nr, function(q) {
@@ -199,22 +204,9 @@ simulate.dce.distr <- function(n.questions=6, n.respondents=50) {
     mlogit(choice ~ 0 + PFS + mod + sev, data=mdata)
 }
 
-## vary both number of respondents and number of questions
-n.resp.seq <- c(seq(from=10, to=200, by=10),
-                seq(from=220, to=300, by=20),
-                seq(from=350, to=500, by=50))
-f.pars.all <- expand.grid(n.questions=seq(from=5, to=nrow(design.nondom)/2, by=1),
-                      n.respondents=n.resp.seq)
-res.vary <- mlply(f.pars.all, error.catch.simulate.dce, n.simul=20)
-
 ## vary number of respondents
-res.vary.n <- llply(seq(from=20, to=300, by=20), error.catch.simulate.dce,
+res.vary.n <- llply(seq(from=20, to=550, by=10), error.catch.simulate,
                     n.questions=6, n.simul=20)
-
-## vary number of questions and respondents
-f.pars <- expand.grid(n.questions=seq(from=5, to=nrow(design.nondom)/2, by=1),
-                      n.respondents=c(50, 100, 200, 300))
-res.vary.q <- mlply(f.pars, error.catch.simulate.dce, n.simul=20)
 
 test.stats.p <- function(res, type) {
     ldply(res, function(y) {
@@ -241,12 +233,12 @@ test.stats.mse <- function(res) {
     ldply(res, function(y) {
         r <- laply(y$results, function(x) {
             dir.w <- x$dir / sum(x$dir)
-            c(MSE(x$mnl$coefficients, rum.fullsample$mnl$coefficients),
-              MSE(x$rpl$coefficients[1:3], rum.fullsampl$rpl$coefficients[1:3]),
-              MSE(dir.w, dir.fullsample.w),
+            c(err.f(x$mnl$coefficients, rum.fullsample$mnl$coefficients),
+              err.f(x$rpl$coefficients[1:3], rum.fullsampl$rpl$coefficients[1:3]),
+              err.f(dir.w, dir.fullsample.w),
               y$n.questions, y$n.respondents)
         })
-        colnames(r) <- c('MSE.mnl', 'MSE.rpl', 'MSE.dir', 'n.quest', 'n.respondents')
+        colnames(r) <- c('err.mnl', 'err.rpl', 'err.dir', 'n.quest', 'n.respondents')
         r
     })
 }
@@ -264,9 +256,9 @@ df.molten.mnl <- melt(as.data.frame(test.stats.mnl),
 df.molten.rpl <- melt(as.data.frame(test.stats.rpl),
                       measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
 df.molten.mse <- melt(as.data.frame(test.n.stats.mse),
-                      measure.vars=c('MSE.mnl', 'MSE.rpl', 'MSE.dir'))
+                      measure.vars=c('err.mnl', 'err.rpl', 'err.dir'))
 df.molten.q <- melt(as.data.frame(test.q.stats.mse),
-                    measure.vars=c('MSE.mnl', 'MSE.rpl', 'MSE.dir'))
+                    measure.vars=c('err.mnl', 'err.rpl', 'err.dir'))
 
 do.plots <- function(df.molten, y.label, ymax=0.01) {
     plots <- dlply(df.molten, 'variable', function(df.plot) {
@@ -296,19 +288,19 @@ do.plots.q <- function(df.molten, y.label) {
 
 do.plots(df.molten.mnl, 'p-value', 0.5)
 do.plots(df.molten.rpl, 'p-value', 0.5)
-do.plots(subset(df.molten.mse, variable %in% c('MSE.mnl', 'MSE.dir')), 'MSE', 0.05)
-do.plots.q(subset(df.molten.q, variable=='MSE.mnl'), 'MSE')
+do.plots(subset(df.molten.mse, variable %in% c('err.mnl', 'err.dir')), 'err', 0.05)
+do.plots.q(subset(df.molten.q, variable=='err.mnl'), 'err')
 
 ## Do stats for the abstract ##
 res.mse.stats <- ldply(c('mnl', 'rpl', 'dir'), function(model) {
-    my.df <- subset(df.molten.q, variable==paste0('MSE.', model))
+    my.df <- subset(df.molten.q, variable==paste0('err.', model))
     cbind(ddply(my.df, c('n.questions', 'n.respondents'), summarise,
           mean=mean(value^2), sd=sd(value^2),
           upb=mean(value^2)+1.96*sd(value^2),
           lob=mean(value^2)-1.96*sd(value^2)),
           model=model)
 })
-res.dir.stats <- ddply(subset(df.molten.mse, variable=='MSE.dir'), 'n.respondents', summarise,
+res.dir.stats <- ddply(subset(df.molten.mse, variable=='err.dir'), 'n.respondents', summarise,
                        mean=mean(value^2), sd=sd(value^2),
                        upb=mean(value^2)+1.96*sd(value^2),
                        lob=mean(value^2)-1.96*sd(value^2))
