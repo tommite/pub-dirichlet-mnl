@@ -105,12 +105,14 @@ coeff.to.w <- function(b) {
     abs(w / sum(abs(w)))
 }
 
-##
-#' function for computing the error (euclidean distance)
-##
-err.f <- function(x, y) {
+eucl.dist <- function(x, y) {
     stopifnot(length(x) == length(y))
     sqrt(sum((x-y)^2))
+}
+
+MSE <- function(x, y) {
+    stopifnot(length(x) == length(y))
+    mean((x-y)^2)
 }
 
 ## Binary MNL choice probability function
@@ -177,7 +179,7 @@ design.chprob <- ddply(design.nondom, ~q.nr, function(q) {
 })
 
 simulate.dce.distr <- function(n.questions=6, n.respondents=50) {
-    stopifnot(n.respondents > 0 && n.questions > 0 && n.questions < (nrow(design.matrix)/2))
+    stopifnot(n.respondents > 0 && n.questions > 0 && n.questions < (nrow(design.nondom)/2))
 
     q.idx.mat <- raply(n.respondents, sample(unique(design.nondom$q.nr), n.questions, replace=FALSE))
     q.idx <- as.vector(q.idx.mat)
@@ -208,10 +210,9 @@ simulate.dce.distr <- function(n.questions=6, n.respondents=50) {
 res.vary.n <- llply(seq(from=20, to=550, by=10), error.catch.simulate,
                     n.questions=6, n.simul=20)
 
-test.stats.p <- function(res, type) {
+test.stats.p <- function(res) {
     ldply(res, function(y) {
-        r <- laply(y$results, function(x) {
-            x <- x[[type]]
+        r <- laply(y$res.dce, function(x) {
             b <- x$coefficients[1:3]
             w <- coeff.to.w(b)
             p <- c(1, 1, 1)
@@ -222,43 +223,36 @@ test.stats.p <- function(res, type) {
             }, error=function(e) { })
             c(as.vector(p), as.vector(w), y$n.questions, y$n.respondents)
         })
-        colnames(r) <- c(paste0(names(y$results[[1]]$mnl$coefficients), '.p'),
-                         paste0(names(y$results[[1]]$mnl$coefficients), '.w'),
+        colnames(r) <- c(paste0(names(y$res.dce[[1]]$coefficients), '.p'),
+                         paste0(names(y$res.dce[[1]]$coefficients), '.w'),
                          'n.quest', 'n.respondents')
         r
     })
 }
 
-test.stats.mse <- function(res) {
+test.stats.mse <- function(res, f=MSE) {
     ldply(res, function(y) {
-        r <- laply(y$results, function(x) {
-            dir.w <- x$dir / sum(x$dir)
-            c(err.f(x$mnl$coefficients, rum.fullsample$mnl$coefficients),
-              err.f(x$rpl$coefficients[1:3], rum.fullsampl$rpl$coefficients[1:3]),
-              err.f(dir.w, dir.fullsample.w),
-              y$n.questions, y$n.respondents)
+        r <- laply(y$res.dce, function(x) {
+          f(coeff.to.w(x$coefficients),
+            coeff.to.w(rum.fullsample$mnl$coefficients))
         })
-        colnames(r) <- c('err.mnl', 'err.rpl', 'err.dir', 'n.quest', 'n.respondents')
-        r
+        norm.dir <- aaply(y$res.dir, 1, function(row) {
+          row / sum(row)})
+        r.full <- cbind(r, aaply(norm.dir, 1, MSE, dir.fullsample.w),
+                   y$n.questions, y$n.respondents)
+        colnames(r.full) <- c('err.mnl', 'err.dir', 'n.quest', 'n.respondents')
+        r.full
     })
 }
 
-test.stats.mnl <- test.stats.p(res.vary.n, 'mnl')
-test.stats.rpl <- test.stats.p(res.vary.n, 'rpl')
-test.n.stats.mse <- test.stats.mse(res.vary.n)
-
-test.q.stats.mnl <- test.stats.p(res.vary.q, 'mnl')
-test.q.stats.mse <- test.stats.mse(res.vary.q)
+test.p.stats.mnl <- test.stats.p(res.vary.n)
+test.stats.mse <- test.stats.mse(res.vary.n)
 
 ## Plot test stats vary n respondents ##
-df.molten.mnl <- melt(as.data.frame(test.stats.mnl),
+df.molten.p <- melt(as.data.frame(test.p.stats.mnl),
                       measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
-df.molten.rpl <- melt(as.data.frame(test.stats.rpl),
-                      measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
-df.molten.mse <- melt(as.data.frame(test.n.stats.mse),
-                      measure.vars=c('err.mnl', 'err.rpl', 'err.dir'))
-df.molten.q <- melt(as.data.frame(test.q.stats.mse),
-                    measure.vars=c('err.mnl', 'err.rpl', 'err.dir'))
+df.molten.mse <- melt(as.data.frame(test.stats.mse),
+                      measure.vars=c('err.mnl', 'err.dir'))
 
 do.plots <- function(df.molten, y.label, ymax=0.01) {
     plots <- dlply(df.molten, 'variable', function(df.plot) {
@@ -273,21 +267,7 @@ do.plots <- function(df.molten, y.label, ymax=0.01) {
     do.call(grid.arrange, c(plots, ncol=1))
 }
 
-do.plots.q <- function(df.molten, y.label) {
-    plots <- dlply(df.molten, 'n.respondents', function(df.plot) {
-        df.plot$n.quest <- factor(df.plot$n.quest,
-                                  labels=unique(df.plot$n.quest))
-        ggplot(df.plot, aes(x=n.quest, y=value)) +
-            geom_boxplot(outlier.colour='red', outlier.shape=20) +
-            ylab(y.label) + theme_economist() + scale_colour_economist() +
-            ggtitle(paste0('n.respondents=',unique(df.plot$n.respondents))) + ylim(0, 0.02)
-    })
-    dev.new(width=6, height=10)
-    do.call(grid.arrange, c(plots, ncol=1))
-}
-
-do.plots(df.molten.mnl, 'p-value', 0.5)
-do.plots(df.molten.rpl, 'p-value', 0.5)
+do.plots(df.molten.p, 'p-value', 0.5)
 do.plots(subset(df.molten.mse, variable %in% c('err.mnl', 'err.dir')), 'err', 0.05)
 do.plots.q(subset(df.molten.q, variable=='err.mnl'), 'err')
 
