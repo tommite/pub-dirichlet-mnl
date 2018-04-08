@@ -254,27 +254,33 @@ df.molten.p <- melt(as.data.frame(test.p.stats.mnl),
 df.molten.mse <- melt(as.data.frame(test.stats.mse),
                       measure.vars=c('err.mnl', 'err.dir'))
 
-do.plots <- function(df.molten, y.label, ymax=0.01) {
+do.plots <- function(df.molten, y.label, ymax=0.01, title=NULL) {
     plots <- dlply(df.molten, 'variable', function(df.plot) {
+        if (is.null(title))
+            title <- unique(df.plot$variable)
         df.plot$n.respondents <- factor(df.plot$n.respondents,
                                         labels=unique(df.plot$n.respondents))
         ggplot(df.plot, aes(x=n.respondents, y=value)) +
             geom_boxplot(outlier.colour='red', outlier.shape=20) +
             ylab(y.label) + theme_economist() + scale_colour_economist() +
-            ggtitle(unique(df.plot$variable)) + ylim(0, ymax)
+            ggtitle(title) + ylim(0, ymax)
     })
-    dev.new(width=10, height=8)
+##    dev.new(width=15, height=8)
     do.call(grid.arrange, c(plots, ncol=1))
 }
 
-do.plots(df.molten.p, 'p-value', 0.5)
-do.plots(subset(df.molten.mse, variable %in% c('err.mnl', 'err.dir')), 'err', 0.05)
-do.plots.q(subset(df.molten.q, variable=='err.mnl'), 'err')
+pdf('mod-ae-significance.pdf', width=15, height=8)
+do.plots(subset(df.molten.p, variable=='mod.p'), 'p-value', 0.5,
+         'Moderate AEs coefficient significance')
+dev.off()
+pdf('error.pdf', width=15, height=10)
+do.plots(subset(df.molten.mse, variable %in% c('err.mnl', 'err.dir')), 'Euclidean distance', 0.02)
+dev.off()
 
 ## Do stats for the abstract ##
-res.mse.stats <- ldply(c('mnl', 'rpl', 'dir'), function(model) {
-    my.df <- subset(df.molten.q, variable==paste0('err.', model))
-    cbind(ddply(my.df, c('n.questions', 'n.respondents'), summarise,
+res.mse.stats <- ldply(c('mnl', 'dir'), function(model) {
+    my.df <- subset(df.molten.mse, variable==paste0('err.', model))
+    cbind(ddply(my.df, 'n.respondents', summarise,
           mean=mean(value^2), sd=sd(value^2),
           upb=mean(value^2)+1.96*sd(value^2),
           lob=mean(value^2)-1.96*sd(value^2)),
@@ -286,15 +292,10 @@ res.dir.stats <- ddply(subset(df.molten.mse, variable=='err.dir'), 'n.respondent
                        lob=mean(value^2)-1.96*sd(value^2))
 
 ## P-value stats
-res.p.mnl <- ddply(subset(df.molten.mnl, variable=='mod.p'),
-                   c('n.quest', 'n.respondents'), summarise,
+res.p.mnl <- ddply(subset(df.molten.mse, variable=='mod.p'),
+                   'n.respondents', summarise,
                    meanmodp=mean(value),
-                   modp02=sum(value>0.02))
-
-res.p.rpl <- ddply(subset(df.molten.rpl, variable=='mod.p'),
-                   c('n.quest', 'n.respondents'), summarise,
-                   meanmodp=mean(value),
-                   modp02=sum(value>0.02))
+                   modp02=sum(value>0.01))
 
 ## for MNL/RPL
 print(subset(res.mse.stats, model == 'mnl' & n.questions==6 & upb < 0.01)) # which are not ok
