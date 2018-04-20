@@ -110,11 +110,6 @@ eucl.dist <- function(x, y) {
     sqrt(sum((x-y)^2))
 }
 
-MSE <- function(x, y) {
-    stopifnot(length(x) == length(y))
-    mean((x-y)^2)
-}
-
 ## Binary MNL choice probability function
 ch.prob <- function(u1, u2) {
     exp(u1) / (exp(u1) + exp(u2))
@@ -129,7 +124,7 @@ n.dir.samples <- 1E3
 
 ## Error handling routine to re-do the simulation in case of error
 ## due to singular design matrix (randomly bad set of questions)
-error.catch.simulate <- function(n.questions=6, n.respondents=50, n.simul=20) {
+error.catch.simulate <- function(n.questions=6, n.respondents=50, n.simul=50) {
     n.errs <- 0
     n.ok <- 0
     resl <- list()
@@ -208,7 +203,7 @@ simulate.dce.distr <- function(n.questions=6, n.respondents=50) {
 
 ## vary number of respondents
 res.vary.n <- llply(seq(from=20, to=550, by=10), error.catch.simulate,
-                    n.questions=6, n.simul=20)
+                    n.questions=6, n.simul=50)
 
 test.stats.p <- function(res) {
     ldply(res, function(y) {
@@ -230,7 +225,7 @@ test.stats.p <- function(res) {
     })
 }
 
-test.stats.mse <- function(res, f=MSE) {
+test.stats.mse <- function(res, f=eucl.dist) {
     ldply(res, function(y) {
         r <- laply(y$res.dce, function(x) {
           f(coeff.to.w(x$coefficients),
@@ -238,7 +233,7 @@ test.stats.mse <- function(res, f=MSE) {
         })
         norm.dir <- aaply(y$res.dir, 1, function(row) {
           row / sum(row)})
-        r.full <- cbind(r, aaply(norm.dir, 1, MSE, dir.fullsample.w),
+        r.full <- cbind(r, aaply(norm.dir, 1, f, dir.fullsample.w),
                    y$n.questions, y$n.respondents)
         colnames(r.full) <- c('err.mnl', 'err.dir', 'n.quest', 'n.respondents')
         r.full
@@ -254,56 +249,146 @@ df.molten.p <- melt(as.data.frame(test.p.stats.mnl),
 df.molten.mse <- melt(as.data.frame(test.stats.mse),
                       measure.vars=c('err.mnl', 'err.dir'))
 
-do.plots <- function(df.molten, y.label, ymax=0.01, title=NULL) {
-    plots <- dlply(df.molten, 'variable', function(df.plot) {
-        if (is.null(title))
-            title <- unique(df.plot$variable)
-        df.plot$n.respondents <- factor(df.plot$n.respondents,
-                                        labels=unique(df.plot$n.respondents))
-        ggplot(df.plot, aes(x=n.respondents, y=value)) +
-            geom_boxplot(outlier.colour='red', outlier.shape=20) +
-            ylab(y.label) + theme_economist() + scale_colour_economist() +
-            ggtitle(title) + ylim(0, ymax)
-    })
-##    dev.new(width=15, height=8)
-    do.call(grid.arrange, c(plots, ncol=1))
+pdf('mod-ae-significance.pdf', width=15, height=8)
+df.plot <- subset(df.molten.p, n.respondents <= 300 & variable == 'mod.p')
+df.plot$n.respondents <- factor(df.plot$n.respondents,
+                                labels=unique(df.plot$n.respondents))
+p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
+    geom_boxplot(outlier.colour='red', outlier.shape=20) +
+    ylab('p-value') + theme_economist() + scale_colour_economist() +
+    ggtitle('Moderate AEs coefficient significance') + coord_cartesian(ylim=c(0, 0.7))
+p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
+dev.off()
+
+pdf('error-eucl.pdf', width=15, height=10)
+## Revalue for having correct subplot titles ##
+df.molten.mse$variable <- revalue(df.molten.mse$variable, c('err.mnl'='MNL', 'err.dir'='Dirichlet'))
+plots <- dlply(subset(df.molten.mse, n.respondents <= 300), 'variable',
+               function(df.plot) {
+                   cut.off <- 0.15
+                   df.plot[df.plot$value > cut.off, 'value'] <- cut.off
+                   df.plot$n.respondents <- factor(df.plot$n.respondents,
+                                                   labels=unique(df.plot$n.respondents))
+                   ggplot(df.plot, aes(x=n.respondents, y=value)) +
+                       geom_boxplot(outlier.colour='red', outlier.shape=20) +
+                       ylab('Euclidean distance') + theme_economist() + scale_colour_economist() +
+                       ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off))
+})
+do.call(grid.arrange, c(plots, ncol=1))
+dev.off()
+
+## Simulation #2 as per Douwe's email ##
+simulate.dce.dir <- function(n.questions=6, n.respondents=50) {
+    stopifnot(n.respondents > 0 && n.questions > 0 && n.questions < (nrow(design.nondom)/2))
+
+    w.dir <- rdirichlet(n.respondents, dir.fullsample$alpha)
+    q.idx.mat <- raply(n.respondents, sample(unique(design.nondom$q.nr), n.questions, replace=FALSE))
+    qs.ws <- as.data.frame(cbind(w.dir, q.idx.mat))
+
+    design.matrix <- adply(qs.ws, 1, function(row) {
+        ws <- row[1:3]
+        qs <- row[-(1:3)]
+        q.rows <- subset(design.nondom, q.nr %in% qs)
+        x <- ldply(unique(q.rows$q.nr), function(q) {
+            r <- subset(q.rows, q.nr %in% q)
+
+            data <- as.matrix(r[,c('PFS', 'mod', 'sev')])
+            ## convert to partial values
+            pvs <- cbind(smaa.pvf(data[,'PFS'], cutoffs=ranges['PFS',], values=c(0,1)),
+                         smaa.pvf(data[,'mod'], cutoffs=ranges['mod',], values=c(1,0)),
+                         smaa.pvf(data[,'sev'], cutoffs=ranges['sev',], values=c(1,0)))
+            colnames(pvs) <- colnames(data)
+            vals <- as.numeric(ws) %*% t(pvs)
+            r$choice <- if(vals[1] > vals[2]) c(1, 0) else c(0, 1)
+            r
+        })
+        x$id <- rownames(row)
+        x
+    }, .expand=FALSE)
+    design.matrix$idx <- paste0(design.matrix$id, '.', design.matrix$q.nr)
+
+    mdata <- mlogit.data(design.matrix, choice='choice',
+                         ch.id='idx',
+                         id.var='X1',
+                         shape='long',
+                         alt.var='alt')
+
+    mdata <- mlogit.data(design.matrix, choice='choice',
+                         ch.id='idx',
+                         shape='long',
+                         alt.var='alt')
+
+    mlogit(choice ~ 0 + PFS + mod + sev, data=mdata)
 }
 
-pdf('mod-ae-significance.pdf', width=15, height=8)
-do.plots(subset(df.molten.p, variable=='mod.p'), 'p-value', 0.5,
-         'Moderate AEs coefficient significance')
-dev.off()
-pdf('error.pdf', width=15, height=10)
-do.plots(subset(df.molten.mse, variable %in% c('err.mnl', 'err.dir')), 'Euclidean distance', 0.02)
-dev.off()
+error.catch.simulate.dce.dir <- function(n.questions=6, n.respondents=50, n.simul=50) {
+    n.errs <- 0
+    n.ok <- 0
+    resl <- list()
+    while(n.ok < n.simul) {
+        ## Somehow the same seed is being used in different calls (??)
+        ## So need to manually set it
+        seed <- n.errs * 10000 + n.questions*1000 + n.respondents*100 + n.simul*10 + n.ok
+        set.seed(seed)
+        tryCatch({
+            res <- simulate.dce.dir(n.questions, n.respondents)
+            n.ok <- n.ok + 1
+            resl[[n.ok]] <- res
+        }, error=function(e) {
+            n.errs <<- n.errs + 1
+            cat('(seed ', seed, '): ', e$message, '\n', sep='')
+        })
+    }
+    cat('[', n.questions, ' questions | ', n.respondents, ' respondents]: ',
+        n.errs, ' errors\n', sep='')
+    list(n.questions=n.questions, n.respondents=n.respondents,
+         n.errors=n.errs, res.dce=resl)
+}
 
-## Do stats for the abstract ##
-res.mse.stats <- ldply(c('mnl', 'dir'), function(model) {
-    my.df <- subset(df.molten.mse, variable==paste0('err.', model))
-    cbind(ddply(my.df, 'n.respondents', summarise,
-          mean=mean(value^2), sd=sd(value^2),
-          upb=mean(value^2)+1.96*sd(value^2),
-          lob=mean(value^2)-1.96*sd(value^2)),
-          model=model)
+res.dce.dir <- llply(seq(from=20, to=550, by=10), error.catch.simulate.dce.dir,
+                    n.questions=6, n.simul=20)
+
+test.stats.dce.dir <- ldply(res.dce.dir, function(y) {
+    r <- laply(y$res.dce, function(x) {
+        eucl.dist(coeff.to.w(x$coefficients),
+                  dir.fullsample.w)
+    })
+    r.full <- cbind(r, y$n.questions, y$n.respondents)
+    colnames(r.full) <- c('err.mnl', 'n.quest', 'n.respondents')
+    r.full
 })
-res.dir.stats <- ddply(subset(df.molten.mse, variable=='err.dir'), 'n.respondents', summarise,
-                       mean=mean(value^2), sd=sd(value^2),
-                       upb=mean(value^2)+1.96*sd(value^2),
-                       lob=mean(value^2)-1.96*sd(value^2))
 
-## P-value stats
-res.p.mnl <- ddply(subset(df.molten.mse, variable=='mod.p'),
-                   'n.respondents', summarise,
-                   meanmodp=mean(value),
-                   modp02=sum(value>0.01))
+test.stats.dce.dir.p <- test.stats.p(res.dce.dir)
 
-## for MNL/RPL
-print(subset(res.mse.stats, model == 'mnl' & n.questions==6 & upb < 0.01)) # which are not ok
-print(subset(res.mse.stats, model == 'mnl' & upb >= 0.01)) # which are not ok
-print(subset(res.mse.stats, model == 'rpl' & upb < 0.01)) # which are ok
+df.molten.dce.dir <- melt(as.data.frame(test.stats.dce.dir),
+                          measure.vars=c('err.mnl'))
+df.molten.dce.dir.p <- melt(as.data.frame(test.stats.dce.dir.p),
+                            measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
 
-## for DIR
-print(subset(res.dir.stats, upb < 0.01))
-print(subset(res.dir.stats, upb < 0.005))
-print(subset(res.dir.stats, upb < 0.001))
+pdf('error-eucl-dce.dir.pdf', width=15, height=10)
+## Revalue for having correct subplot titles ##
+df.molten.dce.dir$variable <- revalue(df.molten.dce.dir$variable, c('err.mnl'='MNL', 'err.dir'='Dirichlet'))
+plots <- dlply(subset(df.molten.dce.dir, n.respondents <= 550), 'variable',
+               function(df.plot) {
+                   cut.off <- 0.15
+                   df.plot[df.plot$value > cut.off, 'value'] <- cut.off
+                   df.plot$n.respondents <- factor(df.plot$n.respondents,
+                                                   labels=unique(df.plot$n.respondents))
+                   ggplot(df.plot, aes(x=n.respondents, y=value)) +
+                       geom_boxplot(outlier.colour='red', outlier.shape=20) +
+                       ylab('Euclidean distance') + theme_economist() + scale_colour_economist() +
+                       ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off))
+})
+do.call(grid.arrange, c(plots, ncol=1))
+dev.off()
 
+pdf('dce-dir.mod-ae-significance.pdf', width=15, height=8)
+df.plot <- subset(df.molten.dce.dir.p, n.respondents <= 550 & variable == 'mod.p')
+df.plot$n.respondents <- factor(df.plot$n.respondents,
+                                labels=unique(df.plot$n.respondents))
+p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
+    geom_boxplot(outlier.colour='red', outlier.shape=20) +
+    ylab('p-value') + theme_economist() + scale_colour_economist() +
+    ggtitle('Moderate AEs coefficient significance') + coord_cartesian(ylim=c(0, 0.7))
+p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
+dev.off()
