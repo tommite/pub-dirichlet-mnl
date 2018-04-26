@@ -120,6 +120,11 @@ rum.fullsample <- simulate.dce(n.questions=16, n.respondents=560)
 dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
 dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
 
+## Calculate R2 for full-sample MNL
+l0 <- (560 * 16 * log(0.5))
+l1 <- rum.fullsample$mnl$logLik[1]
+R2 <- 1 - ((l1 - 3) / l0)
+
 n.dir.samples <- 1E3
 
 ## Error handling routine to re-do the simulation in case of error
@@ -346,7 +351,7 @@ error.catch.simulate.dce.dir <- function(n.questions=6, n.respondents=50, n.simu
 }
 
 res.dce.dir <- llply(seq(from=20, to=550, by=10), error.catch.simulate.dce.dir,
-                    n.questions=6, n.simul=20)
+                    n.questions=6, n.simul=50)
 
 test.stats.dce.dir <- ldply(res.dce.dir, function(y) {
     r <- laply(y$res.dce, function(x) {
