@@ -6,6 +6,7 @@ library(reshape2)
 library(gridExtra)
 library(ggthemes)
 library(MCMCprecision)
+library(devEMF)
 source('load.dce.R')
 source('dirichlet.R')
 
@@ -36,6 +37,8 @@ design.nondom$sev <- as.numeric(as.vector(design.nondom$sev))
 
 ranges <- laply(attribute.names, range)
 rownames(ranges) <- names(attribute.names)
+
+n.simul <- 100
 
 ###
 #' Simulates a DCE with the three models.
@@ -207,8 +210,8 @@ simulate.dce.distr <- function(n.questions=6, n.respondents=50) {
 }
 
 ## vary number of respondents
-res.vary.n <- llply(seq(from=20, to=550, by=10), error.catch.simulate,
-                    n.questions=6, n.simul=50)
+res.vary.n <- llply(seq(from=20, to=540, by=20), error.catch.simulate,
+                    n.questions=6, n.simul=n.simul)
 
 test.stats.p <- function(res) {
     ldply(res, function(y) {
@@ -254,21 +257,21 @@ df.molten.p <- melt(as.data.frame(test.p.stats.mnl),
 df.molten.mse <- melt(as.data.frame(test.stats.mse),
                       measure.vars=c('err.mnl', 'err.dir'))
 
-pdf('mod-ae-significance.pdf', width=15, height=8)
-df.plot <- subset(df.molten.p, n.respondents <= 300 & variable == 'mod.p')
+emf('mod-ae-significance.emf', width=15, height=8)
+df.plot <- subset(df.molten.p, n.respondents <= 560 & n.respondents >=100 & variable == 'mod.p')
 df.plot$n.respondents <- factor(df.plot$n.respondents,
                                 labels=unique(df.plot$n.respondents))
 p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
     geom_boxplot(outlier.colour='red', outlier.shape=20) +
     ylab('p-value') + theme_economist() + scale_colour_economist() +
-    ggtitle('Moderate AEs coefficient significance') + coord_cartesian(ylim=c(0, 0.7))
+    ggtitle('Moderate AEs coefficient significance') + coord_cartesian(ylim=c(0, 0.2))
 p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
 dev.off()
 
-pdf('error-eucl.pdf', width=15, height=10)
+emf('error-eucl.emf', width=15, height=10)
 ## Revalue for having correct subplot titles ##
 df.molten.mse$variable <- revalue(df.molten.mse$variable, c('err.mnl'='MNL', 'err.dir'='Dirichlet'))
-plots <- dlply(subset(df.molten.mse, n.respondents <= 300), 'variable',
+plots <- dlply(subset(df.molten.mse, n.respondents <= 560), 'variable',
                function(df.plot) {
                    cut.off <- 0.15
                    df.plot[df.plot$value > cut.off, 'value'] <- cut.off
@@ -350,8 +353,8 @@ error.catch.simulate.dce.dir <- function(n.questions=6, n.respondents=50, n.simu
          n.errors=n.errs, res.dce=resl)
 }
 
-res.dce.dir <- llply(seq(from=20, to=550, by=10), error.catch.simulate.dce.dir,
-                    n.questions=6, n.simul=50)
+res.dce.dir <- llply(seq(from=20, to=540, by=20), error.catch.simulate.dce.dir,
+                    n.questions=6, n.simul=n.simul)
 
 test.stats.dce.dir <- ldply(res.dce.dir, function(y) {
     r <- laply(y$res.dce, function(x) {
@@ -370,12 +373,12 @@ df.molten.dce.dir <- melt(as.data.frame(test.stats.dce.dir),
 df.molten.dce.dir.p <- melt(as.data.frame(test.stats.dce.dir.p),
                             measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
 
-pdf('error-eucl-dce.dir.pdf', width=15, height=10)
+emf('error-eucl-dce.dir.emf', width=15, height=10)
 ## Revalue for having correct subplot titles ##
 df.molten.dce.dir$variable <- revalue(df.molten.dce.dir$variable, c('err.mnl'='MNL', 'err.dir'='Dirichlet'))
 plots <- dlply(subset(df.molten.dce.dir, n.respondents <= 550), 'variable',
                function(df.plot) {
-                   cut.off <- 0.15
+                   cut.off <- 0.2
                    df.plot[df.plot$value > cut.off, 'value'] <- cut.off
                    df.plot$n.respondents <- factor(df.plot$n.respondents,
                                                    labels=unique(df.plot$n.respondents))
@@ -387,7 +390,7 @@ plots <- dlply(subset(df.molten.dce.dir, n.respondents <= 550), 'variable',
 do.call(grid.arrange, c(plots, ncol=1))
 dev.off()
 
-pdf('dce-dir.mod-ae-significance.pdf', width=15, height=8)
+emf('dce-dir.mod-ae-significance.emf', width=15, height=8)
 df.plot <- subset(df.molten.dce.dir.p, n.respondents <= 550 & variable == 'mod.p')
 df.plot$n.respondents <- factor(df.plot$n.respondents,
                                 labels=unique(df.plot$n.respondents))
