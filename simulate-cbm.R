@@ -258,7 +258,7 @@ cbm.sev.mod <- function(coefficients) {
   
 }
 
-qen.MNL.weights.patient <- function(coefficients) {
+gen.MNL.weights.patient <- function(coefficients) {
   
   ord.swing <- ordinal.swing.MNL(coefficients)
   constr <- mergeConstraints(simplexConstraints(3),do.call(paste0("cbm.",ord.swing$first,".",ord.swing$second),list(coefficients=coefficients)))
@@ -272,11 +272,11 @@ qen.MNL.weights.patient <- function(coefficients) {
   
 }
 
-qen.MNL.weights.survey <- function(n.subjects,coefficients) {
+gen.MNL.weights.survey <- function(n.subjects,coefficients) {
   
   weights <- c()
   for (i in 1:n.subjects) {
-    weights <- rbind(weights,qen.MNL.weights.patient(coefficients))
+    weights <- rbind(weights,gen.MNL.weights.patient(coefficients))
   }
   
   weights
@@ -289,8 +289,7 @@ qen.MNL.weights.survey <- function(n.subjects,coefficients) {
 #set.seed(1911)
 #rum.fullsample <- simulate.dce(n.questions=16, n.respondents=560)
 #coefficients <- rum.fullsample$mnl$coefficients
-#survey.results <- qen.MNL.weights.survey(200,coefficients) 
-
+#survey.results <- gen.MNL.weights.survey(200,coefficients) 
 ####################################################################
 
 
