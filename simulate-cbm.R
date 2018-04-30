@@ -1,19 +1,306 @@
-### Simulate the outcome from a choice-based matching experiment ###
+##### Simulate the outcome from a choice-based matching experiment #####
 
-library(plyr)
 library(smaa)
-library(ggplot2)
-library(reshape2)
-library(MCMCprecision)
 library(hitandrun)
-library(gridExtra)
-library(ggthemes)
+
+#### Choice-based matching with MNL population model ####
+
+# Generate MNL choice-probabilities to the questions for the choice-based matching procedure
+add.choice.prob <- function(coefficients,questions) {
+  questions$xbeta <- as.matrix(questions[,c("PFS","mod","sev")]) %*% coefficients 
+  choice.prob <- c()
+  for (i in 1:dim(questions)[1]) {
+    choice.prob <- c(choice.prob,exp(questions$xbeta[i])/sum(exp(questions$xbeta[questions$q.nr==questions$q.nr[i]])))
+  }
+  questions$choice.prob <- choice.prob
+  questions
+}
+
+# Ordinal swing weighting
+ordinal.swing.MNL <- function(coefficients) {
+  
+  question.1 <- data.frame(q.nr=rep(1,3),alt=c("A","B","C"),PFS=c(90,50,50),mod=c(85,45,85),sev=c(80,80,20))
+  question.1 <- add.choice.prob(coefficients,question.1)
+  choice.1 <- runif(1)
+  if (choice.1<=question.1$choice.prob[1]) { # PFS most important
+    question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(90,90),mod=c(45,85),sev=c(80,20))
+    question.2 <- add.choice.prob(coefficients,question.2) 
+    if (runif(1)<=question.2$choice.prob[1]) { # mod second most important
+      results.ordinal.swing <- list(first="PFS",second="mod",third="sev",prob=question.1$choice.prob[1]*question.2$choice.prob[1])
+    } else { # sev second most important
+      results.ordinal.swing <- list(first="PFS",second="sev",third="mod",prob=question.1$choice.prob[1]*question.2$choice.prob[2])
+    }
+  } else {
+    if (choice.1<=question.1$choice.prob[1]+question.1$choice.prob[2]) { # mod most important
+      question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(90,50),mod=c(45,45),sev=c(80,20))
+      question.2 <- add.choice.prob(coefficients,question.2) 
+      if (runif(1)<=question.2$choice.prob[1]) { # PFS second most important
+        results.ordinal.swing <- list(first="mod",second="PFS",third="sev",prob=question.1$choice.prob[2]*question.2$choice.prob[1])
+      } else { # sev second most important
+        results.ordinal.swing <- list(first="mod",second="sev",third="PFS",prob=question.1$choice.prob[2]*question.2$choice.prob[2])
+      }
+    } else { # sev most important
+      question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(90,50),mod=c(85,45),sev=c(20,20))
+      question.2 <- add.choice.prob(coefficients,question.2) 
+      if (runif(1)<=question.2$choice.prob[1]) { # PFS second most important
+        results.ordinal.swing <- list(first="sev",second="PFS",third="mod",prob=question.1$choice.prob[3]*question.2$choice.prob[1])
+      } else { # modv second most important
+        results.ordinal.swing <- list(first="sev",second="mod",third="PFS",prob=question.1$choice.prob[3]*question.2$choice.prob[2])
+      }
+    }
+  }
+  
+  results.ordinal.swing
+  
+}
+
+# Choice-based matching to trade-off PFS against sev
+cbm.PFS.sev <- function(coefficients) {
+  
+  question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(70,50),mod=c(65,65),sev=c(80,20)) # First bisection step
+  question.1 <- add.choice.prob(coefficients,question.1)
+  
+  if(runif(1)<=question.1$choice.prob[1]) { 
+    
+    question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(60,50),mod=c(65,65),sev=c(80,20)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) {
+      constr <- lowerRatioConstraint(3,1,3,4)
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,1,3,2),upperRatioConstraint(3,1,3,4))
+    }
+    
+  } else { 
+    
+    question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(80,50),mod=c(65,65),sev=c(80,20)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) { 
+      constr <- mergeConstraints(lowerRatioConstraint(3,1,3,1+1/3),upperRatioConstraint(3,1,3,2))
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,1,3,1),upperRatioConstraint(3,1,3,1+1/3))
+    }
+    
+  }
+  
+  constr
+  
+}
+
+# Choice-based matching to trade-off PFS against mod
+cbm.PFS.mod <- function(coefficients) {
+  
+  question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(70,50),mod=c(85,45),sev=c(50,50)) # First bisection step
+  question.1 <- add.choice.prob(coefficients,question.1)
+  
+  if(runif(1)<=question.1$choice.prob[1]) { 
+    
+    question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(60,50),mod=c(85,45),sev=c(50,50)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) { 
+      constr <- lowerRatioConstraint(3,1,2,4)
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,1,2,2),upperRatioConstraint(3,1,2,4))
+    }
+    
+  } else { 
+    
+    question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(80,50),mod=c(85,45),sev=c(50,50)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) { 
+      constr <- mergeConstraints(lowerRatioConstraint(3,1,2,1+1/3),upperRatioConstraint(3,1,2,2))
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,1,2,1),upperRatioConstraint(3,1,2,1+1/3))
+    }
+    
+  }
+  
+  constr
+  
+}
+
+# Choice-based matching to trade-off mod against sev
+cbm.mod.sev <- function(coefficients) {
+  
+  question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(70,70),mod=c(65,85),sev=c(80,20)) # First bisection step
+  question.1 <- add.choice.prob(coefficients,question.1)
+  
+  if(runif(1)<=question.1$choice.prob[1]) { 
+    
+    question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(70,70),mod=c(75,85),sev=c(80,20)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) {
+      constr <- lowerRatioConstraint(3,2,3,4)
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,2,3,2),upperRatioConstraint(3,2,3,4))
+    }
+    
+  } else { 
+    
+    question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(70,70),mod=c(55,65),sev=c(80,20)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) { 
+      constr <- mergeConstraints(lowerRatioConstraint(3,2,3,1+1/3),upperRatioConstraint(3,2,3,2))
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,2,3,1),upperRatioConstraint(3,2,3,1+1/3))
+    }
+    
+  }
+  
+  constr
+  
+}
+
+# Choice-based matching to trade-off mod against PFS
+cbm.mod.PFS <- function(coefficients) {
+  
+  question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(50,90),mod=c(65,85),sev=c(50,50)) # First bisection step
+  question.1 <- add.choice.prob(coefficients,question.1)
+  
+  if(runif(1)<=question.1$choice.prob[1]) { 
+    
+    question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(50,90),mod=c(75,85),sev=c(50,50)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) {
+      constr <- lowerRatioConstraint(3,2,1,4)
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,2,1,2),upperRatioConstraint(3,2,1,4))
+    }
+    
+  } else { 
+    
+    question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(50,90),mod=c(55,85),sev=c(50,50)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) { 
+      constr <- mergeConstraints(lowerRatioConstraint(3,2,1,1+1/3),upperRatioConstraint(3,2,1,2))
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,2,1,1),upperRatioConstraint(3,2,1,1+1/3))
+    }
+    
+  }
+  
+  constr
+  
+}
+
+# Choice-based matching to trade-off sev against PFS
+cbm.sev.PFS <- function(coefficients) {
+  
+  question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(50,90),mod=c(65,65),sev=c(50,80)) # First bisection step
+  question.1 <- add.choice.prob(coefficients,question.1)
+  
+  if(runif(1)<=question.1$choice.prob[1]) { 
+    
+    question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(50,90),mod=c(65,65),sev=c(65,80)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) {
+      constr <- lowerRatioConstraint(3,3,1,4)
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,3,1,2),upperRatioConstraint(3,3,1,4))
+    }
+    
+  } else { 
+    
+    question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(50,90),mod=c(65,65),sev=c(35,80)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) { 
+      constr <- mergeConstraints(lowerRatioConstraint(3,3,1,1+1/3),upperRatioConstraint(3,3,1,2))
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,3,1,1),upperRatioConstraint(3,3,1,1+1/3))
+    }
+    
+  }
+  
+  constr
+  
+}
+
+# Choice-based matching to trade-off sev against mod
+cbm.sev.mod <- function(coefficients) {
+  
+  question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(70,70),mod=c(85,45),sev=c(50,80)) # First bisection step
+  question.1 <- add.choice.prob(coefficients,question.1)
+  
+  if(runif(1)<=question.1$choice.prob[1]) { 
+    
+    question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(70,70),mod=c(45,85),sev=c(65,80)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) {
+      constr <- lowerRatioConstraint(3,3,2,4)
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,3,2,2),upperRatioConstraint(3,3,2,4))
+    }
+    
+  } else { 
+    
+    question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(70,70),mod=c(85,45),sev=c(35,80)) # Second bisection step
+    question.2 <- add.choice.prob(coefficients,question.2)
+    
+    if(runif(1)<=question.2$choice.prob[1]) { 
+      constr <- mergeConstraints(lowerRatioConstraint(3,3,2,1+1/3),upperRatioConstraint(3,3,2,2))
+    } else {
+      constr <- mergeConstraints(lowerRatioConstraint(3,3,2,1),upperRatioConstraint(3,3,2,1+1/3))
+    }
+    
+  }
+  
+  constr
+  
+}
+
+qen.MNL.weights.patient <- function(coefficients) {
+  
+  ord.swing <- ordinal.swing.MNL(coefficients)
+  constr <- mergeConstraints(simplexConstraints(3),do.call(paste0("cbm.",ord.swing$first,".",ord.swing$second),list(coefficients=coefficients)))
+  constr <- mergeConstraints(constr,do.call(paste0("cbm.",ord.swing$second,".",ord.swing$third),list(coefficients=coefficients)))
+  
+  # Generate representative weights by applying HAR sampling (slack-LP with random slack)
+  weights <- colMeans(hitandrun(constr,n.samples=1,x0.randomize=T))
+  names(weights) <- c("PFS","mod","sev")
+  
+  weights
+  
+}
+
+qen.MNL.weights.survey <- function(n.subjects,coefficients) {
+  
+  weights <- c()
+  for (i in 1:n.subjects) {
+    weights <- rbind(weights,qen.MNL.weights.patient(coefficients))
+  }
+  
+  weights
+  
+}
+
+
+################### Example #########################################
+
+#set.seed(1911)
+#rum.fullsample <- simulate.dce(n.questions=16, n.respondents=560)
+#coefficients <- rum.fullsample$mnl$coefficients
+#survey.results <- qen.MNL.weights.survey(200,coefficients) 
+
+####################################################################
+
+
+#### Choice-based matching with Dirichlet population model ####
 
 # Simulates a choice-based matching procedure
 # Assumption: additive value function with linear partial value functions
 #
 #' @param w respondent's true weight vector
-#' @param n.steps number of bisection steps in the choice-based matching procedure (per pairsie comparison)
+#' @param n.steps number of bisection steps in the choice-based matching procedure (per pairwise comparison)
 #' @param har.samples number of har samples based on which the respondent's weight vector is estimated 
 
 simulate.cbm <- function(w,n.steps=2,har.samples=1e5) {
@@ -51,44 +338,3 @@ cbm.survey <- function(n.respondents,dirichlet.alpha,...) {
   colMeans(weights.cbm)
   
 }
-
-cbm.survey(200,c(2.96,0.97,1.79))
-
-### Conduct experiment ###
-
-respondents <- c(10,50,100,250,500) 
-n.experiments <- 20
-dirichlet.alpha <- c(2.96,0.97,1.79)
-true.w <- dirichlet.alpha/sum(dirichlet.alpha)
-
-results.cbm <- c()
-for (n.respondents in respondents) {
-  print(n.respondents)
-  for (e in 1:n.experiments) {
-    print(e)
-    results.cbm <- rbind(results.cbm,c(cbm.survey(n.respondents,dirichlet.alpha),n.respondents))
-  }
-}  
-colnames(results.cbm) <- c("pfs","mod","sev","n")
-results.cbm <- as.data.frame(results.cbm)
-results.cbm$n <- as.factor(results.cbm$n)
-
-## Visualize results 
-p.pfs <- ggplot(results.cbm) +
-geom_boxplot(mapping=aes(x=n,y=pfs)) +
-geom_hline(yintercept=true.w[1],linetype='solid',color='darkblue',size=1) +
-ylab("Weight") + ggtitle("PFS.w") + theme_economist() + scale_colour_economist() 
-
-p.mod <- ggplot(results.cbm) +
-geom_boxplot(mapping=aes(x=n,y=mod)) +
-geom_hline(yintercept=true.w[2],linetype='solid',color='darkblue',size=1) +
-ylab("Weight") + ggtitle("mod.w") + theme_economist() + scale_colour_economist()
-
-p.sev <- ggplot(results.cbm) +
-geom_boxplot(mapping=aes(x=n,y=sev)) +
-geom_hline(yintercept=true.w[3],linetype='solid',color='darkblue',size=1) +
-ylab("Weight") + ggtitle("sev.w") + theme_economist() + scale_colour_economist()
-
-dev.new(width=8, height=6)
-grid.arrange(p.pfs,p.mod,p.sev,ncol=1)
-
