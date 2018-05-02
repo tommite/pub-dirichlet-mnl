@@ -9,6 +9,7 @@ library(MCMCprecision)
 library(devEMF)
 source('load.dce.R')
 source('dirichlet.R')
+source('simulate-cbm.R')
 
 set.seed(1911)
 
@@ -120,6 +121,7 @@ ch.prob <- function(u1, u2) {
 
 ## Fit models for the maximum possible data set
 rum.fullsample <- simulate.dce(n.questions=16, n.respondents=560)
+mnl.fullsample.w <- coeff.to.w(rum.fullsample$mnl$coefficients)
 dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
 dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
 
@@ -400,3 +402,21 @@ p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
     ggtitle('Moderate AEs coefficient significance') + coord_cartesian(ylim=c(0, 0.7))
 p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
 dev.off()
+
+## Simulation #1 as per Douwe's email ##
+res.dir.dce <- llply(seq(from=20, to=540, by=20),function(n.respondents) {
+    dir.params <- raply(n.simul, {
+        survey.results <- gen.MNL.weights.survey(n.respondents, rum.fullsample$mnl$coefficients)
+        dirichlet.mle(survey.results)$alpha
+    })
+    dir.norm <- aaply(dir.params, 1, function(row) {row / sum(row)})
+    colnames(dir.norm) <- c('PFS', 'mod', 'sev')
+    cbind(dir.norm, 'n.respondents'=n.respondents)
+}, .progress='text')
+
+res.dir.dce.err <- laply(res.dir.dce, function(row) {
+    cbind(row, eucl.dist(row[c('PFS', 'mod', 'sev')], mnl.fullsample.w))
+})
+
+df.molten.dir.dce <- melt(as.data.frame(test.stats.dce.dir),
+                          measure.vars=c('err.mnl'))
