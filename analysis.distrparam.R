@@ -10,6 +10,7 @@ library(devEMF)
 source('load.dce.R')
 source('dirichlet.R')
 source('simulate-cbm.R')
+source('plotting.R')
 
 set.seed(1911)
 
@@ -134,7 +135,7 @@ n.dir.samples <- 1E3
 
 ## Error handling routine to re-do the simulation in case of error
 ## due to singular design matrix (randomly bad set of questions)
-error.catch.simulate <- function(n.questions=6, n.respondents=50, n.simul=50) {
+error.catch.simulate <- function(n.questions=6, n.respondents=50, n.simul=100) {
     n.errs <- 0
     n.ok <- 0
     resl <- list()
@@ -259,7 +260,7 @@ df.molten.p <- melt(as.data.frame(test.p.stats.mnl),
 df.molten.mse <- melt(as.data.frame(test.stats.mse),
                       measure.vars=c('err.mnl', 'err.dir'))
 
-emf('mod-ae-significance.emf', width=15, height=8)
+pdf('mod-ae-significance.pdf', width=15, height=8)
 df.plot <- subset(df.molten.p, n.respondents <= 560 & n.respondents >=100 & variable == 'mod.p')
 df.plot$n.respondents <- factor(df.plot$n.respondents,
                                 labels=unique(df.plot$n.respondents))
@@ -270,7 +271,7 @@ p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
 p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
 dev.off()
 
-emf('error-eucl.emf', width=15, height=10)
+pdf('error-eucl.pdf', width=15, height=10)
 ## Revalue for having correct subplot titles ##
 df.molten.mse$variable <- revalue(df.molten.mse$variable, c('err.mnl'='MNL', 'err.dir'='Dirichlet'))
 plots <- dlply(subset(df.molten.mse, n.respondents <= 560), 'variable',
@@ -323,15 +324,10 @@ simulate.dce.dir <- function(n.questions=6, n.respondents=50) {
                          shape='long',
                          alt.var='alt')
 
-    mdata <- mlogit.data(design.matrix, choice='choice',
-                         ch.id='idx',
-                         shape='long',
-                         alt.var='alt')
-
     mlogit(choice ~ 0 + PFS + mod + sev, data=mdata)
 }
 
-error.catch.simulate.dce.dir <- function(n.questions=6, n.respondents=50, n.simul=50) {
+error.catch.simulate.dce.dir <- function(n.questions=6, n.respondents=50, n.simul=100) {
     n.errs <- 0
     n.ok <- 0
     resl <- list()
@@ -375,10 +371,8 @@ df.molten.dce.dir <- melt(as.data.frame(test.stats.dce.dir),
 df.molten.dce.dir.p <- melt(as.data.frame(test.stats.dce.dir.p),
                             measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
 
-emf('error-eucl-dce.dir.emf', width=15, height=10)
-## Revalue for having correct subplot titles ##
-df.molten.dce.dir$variable <- revalue(df.molten.dce.dir$variable, c('err.mnl'='MNL', 'err.dir'='Dirichlet'))
-plots <- dlply(subset(df.molten.dce.dir, n.respondents <= 550), 'variable',
+df.molten.dce.dir$variable <- revalue(df.molten.dce.dir$variable, c('err.mnl'='MNL (correct preference model Dirichlet)'))
+plot.dce.dir <- dlply(subset(df.molten.dce.dir, n.respondents <= 550), 'variable',
                function(df.plot) {
                    cut.off <- 0.2
                    df.plot[df.plot$value > cut.off, 'value'] <- cut.off
@@ -389,10 +383,8 @@ plots <- dlply(subset(df.molten.dce.dir, n.respondents <= 550), 'variable',
                        ylab('Euclidean distance') + theme_economist() + scale_colour_economist() +
                        ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off))
 })
-do.call(grid.arrange, c(plots, ncol=1))
-dev.off()
 
-emf('dce-dir.mod-ae-significance.emf', width=15, height=8)
+pdf('dce-dir.mod-ae-significance.pdf', width=15, height=8)
 df.plot <- subset(df.molten.dce.dir.p, n.respondents <= 550 & variable == 'mod.p')
 df.plot$n.respondents <- factor(df.plot$n.respondents,
                                 labels=unique(df.plot$n.respondents))
@@ -404,7 +396,7 @@ p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$
 dev.off()
 
 ## Simulation #1 as per Douwe's email ##
-res.dir.dce <- llply(seq(from=20, to=540, by=20),function(n.respondents) {
+res.dir.dce <- ldply(seq(from=20, to=540, by=20),function(n.respondents) {
     dir.params <- raply(n.simul, {
         survey.results <- gen.MNL.weights.survey(n.respondents, rum.fullsample$mnl$coefficients)
         dirichlet.mle(survey.results)$alpha
@@ -414,9 +406,45 @@ res.dir.dce <- llply(seq(from=20, to=540, by=20),function(n.respondents) {
     cbind(dir.norm, 'n.respondents'=n.respondents)
 }, .progress='text')
 
-res.dir.dce.err <- laply(res.dir.dce, function(row) {
-    cbind(row, eucl.dist(row[c('PFS', 'mod', 'sev')], mnl.fullsample.w))
+res.dir.dce.err <- adply(res.dir.dce, 1, function(row) {
+    cbind(row, err=eucl.dist(row[c('PFS', 'mod', 'sev')], mnl.fullsample.w))
 })
 
-df.molten.dir.dce <- melt(as.data.frame(test.stats.dce.dir),
-                          measure.vars=c('err.mnl'))
+df.molten.dir.dce <- melt(as.data.frame(res.dir.dce.err),
+                          measure.vars=c('err'))
+
+## Revalue for having correct subplot titles ##
+df.molten.dir.dce$variable <- revalue(df.molten.dir.dce$variable, c('err'='Dirichlet (correct preference model MNL)'))
+plot.dir.dce <- dlply(subset(df.molten.dir.dce, n.respondents <= 550), 'variable',
+               function(df.plot) {
+                   cut.off <- 0.2
+                   df.plot[df.plot$value > cut.off, 'value'] <- cut.off
+                   df.plot$n.respondents <- factor(df.plot$n.respondents,
+                                                   labels=unique(df.plot$n.respondents))
+                   ggplot(df.plot, aes(x=n.respondents, y=value)) +
+                       geom_boxplot(outlier.colour='red', outlier.shape=20) +
+                       ylab('Euclidean distance') + theme_economist() + scale_colour_economist() +
+                       ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off))
+               })
+pdf('error-eucl-wrong-pmodel.pdf', width=15, height=10)
+grid.arrange(plot.dce.dir[[1]], plot.dir.dce[[1]], ncol=1)
+dev.off()
+
+######### PLOT WEIGHT DISTRIBUTIONS ##########
+w.mnl.distr <- gen.MNL.weights.survey(nrow(df.w), rum.fullsample$mnl$coefficients)
+
+plot.mnl.surv <- pinkfloyd.fig(w.mnl.distr)
+w.df <- df.w[,c('pfs', 'mod', 'sev')]
+colnames(w.df)[1] <- 'PFS'
+plot.w.orig <- pinkfloyd.fig(w.df)
+
+## NEED TO write a function for sampling weights from the survey assuming DIRICHLET parameters
+## GEN WEIGHTS
+plot.dir <- pinkfloyd.fig(rdirichlet(nrow(w.mnl.distr), dir.fullsample$alpha))
+
+## AND PLOT THAT
+pdf('weightsamples.pdf', width=20, height=8)
+grid.arrange(plot.w.orig, plot.dir, plot.mnl.surv, nrow=1)
+dev.off()
+
+## DO FIGURE: Add titles for subplots
