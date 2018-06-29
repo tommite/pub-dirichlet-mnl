@@ -93,6 +93,7 @@ simulate.dce <- function(n.questions=6, n.respondents=50) {
                       rpar=c(PFS='n', mod='n', sev='n'),
                       data=mdata,
                       panel=TRUE,
+                      R=100,
                       halton=NA)
     res.mnl <- mlogit(choice ~ 0 + PFS + mod + sev,
                       data=mdata)
@@ -254,6 +255,8 @@ test.stats.mse <- function(res, f=eucl.dist) {
 test.p.stats.mnl <- test.stats.p(res.vary.n)
 test.stats.mse <- test.stats.mse(res.vary.n)
 
+plot.theme <- theme_economist(base_size=20)
+
 ## Plot test stats vary n respondents ##
 df.molten.p <- melt(as.data.frame(test.p.stats.mnl),
                       measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
@@ -266,8 +269,9 @@ df.plot$n.respondents <- factor(df.plot$n.respondents,
                                 labels=unique(df.plot$n.respondents))
 p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
     geom_boxplot(outlier.colour='red', outlier.shape=20) +
-    ylab('p-value') + theme_economist() + scale_colour_economist() +
-    ggtitle('Moderate AEs coefficient significance') + coord_cartesian(ylim=c(0, 0.2))
+    ylab('p-value') + xlab('Number of respondents') + plot.theme + scale_colour_economist() +
+    coord_cartesian(ylim=c(0, 0.2))
+##    ggtitle('Moderate AE coefficient significance')
 p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
 dev.off()
 
@@ -282,7 +286,8 @@ plots <- dlply(subset(df.molten.mse, n.respondents <= 560), 'variable',
                                                    labels=unique(df.plot$n.respondents))
                    ggplot(df.plot, aes(x=n.respondents, y=value)) +
                        geom_boxplot(outlier.colour='red', outlier.shape=20) +
-                       ylab('Euclidean distance') + theme_economist() + scale_colour_economist() +
+                       ylab('Euclidean distance') + xlab('Number of respondents') +
+                       plot.theme + scale_colour_economist() +
                        ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off))
 })
 do.call(grid.arrange, c(plots, ncol=1))

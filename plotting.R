@@ -51,7 +51,7 @@ pinkfloyd.fig <- function(data) {
                    legend.position="bottom",legend.title=element_blank(),
                    legend.direction="horizontal",
                    legend.margin=margin(t=-0.75, unit='cm'),
-                   aspect.ratio=1,legend.text=element_text(size=7),
+                   aspect.ratio=1,legend.text=element_text(size=14, color='#464646'),
                    plot.margin=unit(c(-0.5,0,0.5,0),unit="cm"))
 
     ## Add coordinate lines
@@ -72,10 +72,10 @@ pinkfloyd.fig <- function(data) {
     p <- p + geom_segment(data=data.grid.3,mapping=aes(x=x,xend=xend,y=y,yend=yend),colour="white")
     p <- p + geom_text(data=data.frame(data.grid.3,label=as.character(ticks)),mapping=aes(x=xend,y=yend,label=label),nudge_x=0.02,nudge_y=-0.02,hjust="right",angle=60,size=2)
 
-                                        # Add axis labels
-    p <- p +geom_text(data=NULL,x=(extreme.1[1]+extreme.3[1])/2 + 0.1,y=(extreme.1[2]+extreme.2[2])/2 + 0.075,label="1-year progression-free survival (50% -> 90%)",angle=300,size=3)
-    p <- p +geom_text(data=NULL,x=(extreme.1[1]+extreme.2[1])/2 - 0.1,y=(extreme.1[2]+extreme.2[2])/2 + 0.075,label="Moderate chronic toxicity (85% -> 45%)",angle=60,size=3)
-    p <- p +geom_text(data=NULL,x=0,y=extreme.2[2] - 0.12,label="Severe toxicity (80% -> 20%)",size=3)
+    ## Add axis labels
+    p <- p +geom_text(data=NULL,x=(extreme.1[1]+extreme.3[1])/2 + 0.1,y=(extreme.1[2]+extreme.2[2])/2 + 0.075,label="1-year PFS (50% -> 90%)",angle=300,size=7, color='#464646')
+    p <- p +geom_text(data=NULL,x=(extreme.1[1]+extreme.2[1])/2 - 0.1,y=(extreme.1[2]+extreme.2[2])/2 + 0.075,label="Moderate AEs (85% -> 45%)",angle=60,size=7, color='#464646')
+    p <- p +geom_text(data=NULL,x=0,y=extreme.2[2] - 0.12,label="Severe AEs (80% -> 20%)",size=7, color='#464646')
 
                                         # Add additional line segments (inner triangles)
                                         #p <- p + geom_segment(data=NULL,x=(extreme.1[1]+extreme.2[1])/2,xend=(extreme.1[1]+extreme.3[1])/2,y=(extreme.1[2]+extreme.2[2])/2,yend=(extreme.1[2]+extreme.2[2])/2,linetype="solid",size=1,colour="darkgray")
