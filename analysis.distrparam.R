@@ -14,6 +14,8 @@ source('plotting.R')
 
 set.seed(1911)
 
+memory.limit(size=16000)
+
 ## Generate L^ma non-dominated design ##
 attribute.names <- list('PFS'=sort(unique(df$level.PFS)),
                         'mod'=sort(unique(df$level.mod)),
@@ -93,7 +95,7 @@ simulate.dce <- function(n.questions=6, n.respondents=50) {
                       rpar=c(PFS='n', mod='n', sev='n'),
                       data=mdata,
                       panel=TRUE,
-                      R=100,
+                      R=5000,
                       halton=NA)
     res.mnl <- mlogit(choice ~ 0 + PFS + mod + sev,
                       data=mdata)
@@ -124,14 +126,14 @@ ch.prob <- function(u1, u2) {
 ## Fit models for the maximum possible data set
 rum.fullsample <- simulate.dce(n.questions=16, n.respondents=560)
 mnl.fullsample.w <- coeff.to.w(rum.fullsample$mnl$coefficients)
+rpl.fullsample.w <- coeff.to.w(rum.fullsample$rpl$coefficients[1:3])
 dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
 dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
 
-## Calculate R2 for full-sample MNL
+## Calculate R2's
 l0 <- (560 * 16 * log(0.5))
 l1 <- rum.fullsample$mnl$logLik[1]
-R2 <- 1 - ((l1 - 3) / l0)
-
+R2.mnl <- 1 - ((l1 - 3) / l0)
 n.dir.samples <- 1E3
 
 ## Error handling routine to re-do the simulation in case of error
@@ -438,7 +440,19 @@ dev.off()
 ######### PLOT WEIGHT DISTRIBUTIONS ##########
 w.mnl.distr <- gen.MNL.weights.survey(nrow(df.w), rum.fullsample$mnl$coefficients)
 
+gen.RPL.weights <- function(coeff, n) {
+    w <- cbind(rnorm(n, coeff['PFS'], abs(coeff['sd.PFS'])),
+               rnorm(n, coeff['mod'], abs(coeff['sd.mod'])),
+               rnorm(n, coeff['sev'], abs(coeff['sd.sev'])))
+    colnames(w) <- c('pfs', 'mod', 'sev')
+    w <- aaply(w, 1, coeff.to.w)
+    w
+}
+w.rpl.distr <- gen.RPL.weights(rum.fullsample$rpl$coefficients, 560)
+
 plot.mnl.surv <- pinkfloyd.fig(w.mnl.distr)
+plot.rpl <- pinkfloyd.fig(w.rpl.distr)
+
 w.df <- df.w[,c('pfs', 'mod', 'sev')]
 colnames(w.df)[1] <- 'PFS'
 plot.w.orig <- pinkfloyd.fig(w.df)
@@ -449,7 +463,7 @@ plot.dir <- pinkfloyd.fig(rdirichlet(nrow(w.mnl.distr), dir.fullsample$alpha))
 
 ## AND PLOT THAT
 pdf('weightsamples.pdf', width=20, height=8)
-grid.arrange(plot.w.orig, plot.dir, plot.mnl.surv, nrow=1)
+grid.arrange(plot.w.orig, plot.dir, plot.rpl, plot.mnl.surv, nrow=2)
 dev.off()
 
 ## DO FIGURE: Add titles for subplots
