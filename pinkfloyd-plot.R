@@ -13,7 +13,6 @@ rotate <- function(x) {
 }
 
 pinkfloyd.fig <- function(data) {
-
     eq.constr <- list(constr = t(rep(1, 3)), dir = "=", rhs = 1)
     basis <- solution.basis(eq.constr)
     data.transformed <- c()

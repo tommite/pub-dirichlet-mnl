@@ -1,140 +1,18 @@
 library(plyr)
-library(support.CEs)
-library(smaa)
 library(ggplot2)
 library(reshape2)
 library(gridExtra)
 library(ggthemes)
 library(MCMCprecision)
 library(devEMF)
-source('load.dce.R')
-source('dirichlet.R')
+source('dirichlet-cvm.R')
 source('simulate-cbm.R')
-source('plotting.R')
-
-set.seed(1911)
+source('pinkfloyd-plot.R')
+source('load.dce.R')
 
 memory.limit(size=16000)
 
-## Generate L^ma non-dominated design ##
-attribute.names <- list('PFS'=sort(unique(df$level.PFS)),
-                        'mod'=sort(unique(df$level.mod)),
-                        'sev'=sort(unique(df$level.sev)))
-design <- Lma.design(attribute.names=attribute.names, nalternatives=2, nblocks=1)
-ok.qs <- laply(rownames(design$alternatives$alt.1), function(q.idx) {
-    q1 <- as.numeric(as.matrix(design$alternatives$alt.1[q.idx,c('PFS', 'mod', 'sev')]))
-    q2 <- as.numeric(as.matrix(design$alternatives$alt.2[q.idx,c('PFS', 'mod', 'sev')]))
-    !((q1[1] >= q2[1] && q1[2] <= q2[2] && q1[3] <= q2[3]) ||
-      (q1[1] <= q2[1] && q1[2] >= q2[2] && q1[3] >= q2[3]))
-})
-a1.qs <- design$alternatives$alt.1[ok.qs,]
-a2.qs <- design$alternatives$alt.2[ok.qs,]
-a1.qs$q.nr <- 1:nrow(a1.qs)
-a2.qs$q.nr <- 1:nrow(a2.qs)
-a1.qs$alt <- 'A'
-a2.qs$alt <- 'B'
-design.nondom <- rbind(a1.qs, a2.qs)[,c('q.nr', 'alt', 'PFS', 'mod', 'sev')]
-design.nondom <- design.nondom[order(design.nondom$q.nr),]
-design.nondom$PFS <- as.numeric(as.vector(design.nondom$PFS))
-design.nondom$mod <- as.numeric(as.vector(design.nondom$mod))
-design.nondom$sev <- as.numeric(as.vector(design.nondom$sev))
-
-ranges <- laply(attribute.names, range)
-rownames(ranges) <- names(attribute.names)
-
 n.simul <- 100
-
-###
-#' Simulates a DCE with the three models.
-#'
-#' @param n.questions Number of questions each respondent answers. These are
-#' randomly selected from the set of all questions
-#' @param n.respondents Number of respondents, sampled randomly from the
-#' pool in the original study.
-#' @return list of results from the 3 models
-##
-simulate.dce <- function(n.questions=6, n.respondents=50) {
-    stopifnot(n.respondents <= length(unique(df$url))) # PRECOND
-    stopifnot(n.respondents > 0)
-
-    q.idx <- sample(unique(design.nondom$q.nr), n.questions, replace=FALSE)
-    respondents <- sample(unique(df$url), n.respondents, replace=TRUE)
-
-    qs <- design.nondom[design.nondom$q.nr %in% q.idx,]
-    resp.w <- subset(df.w, url %in% respondents)[,c('url', 'pfs', 'mod', 'sev')]
-
-    design.matrix <- adply(resp.w, 1, function(row) {
-        rows <- qs
-        rows$url <- row$url
-        rows$question.no <- paste0(rownames(row), '.', rows$q.nr)
-
-        ldply(unique(rows$q.nr), function(q) {
-            r <- subset(rows, q.nr %in% q)
-
-            data <- as.matrix(r[,c('PFS', 'mod', 'sev')])
-            ## convert to partial values
-            pvs <- cbind(smaa.pvf(data[,'PFS'], cutoffs=ranges['PFS',], values=c(0,1)),
-                         smaa.pvf(data[,'mod'], cutoffs=ranges['mod',], values=c(1,0)),
-                         smaa.pvf(data[,'sev'], cutoffs=ranges['sev',], values=c(1,0)))
-            colnames(pvs) <- colnames(data)
-            w <- as.matrix(subset(resp.w, url==unique(r$url))[,c('pfs', 'mod', 'sev')])
-            vals <- w %*% t(pvs)
-            r$choice <- if(vals[1] > vals[2]) c(1, 0) else c(0, 1)
-            r
-        })
-    }, .expand=FALSE)
-    design.matrix$idx <- paste0(design.matrix$url, '.', design.matrix$question.no)
-
-    mdata <- mlogit.data(design.matrix, choice='choice',
-                         ch.id='idx',
-                         id.var='url',
-                         shape='long',
-                         alt.var='alt')
-
-    res.rpl <- mlogit(choice ~ 0 + PFS + mod + sev,
-                      rpar=c(PFS='n', mod='n', sev='n'),
-                      data=mdata,
-                      panel=TRUE,
-                      R=5000,
-                      halton=NA)
-    res.mnl <- mlogit(choice ~ 0 + PFS + mod + sev,
-                      data=mdata)
-    res.dir <- dirichlet.mle(resp.w[,c('pfs', 'mod', 'sev')])
-
-    list(mnl=res.mnl, rpl=res.rpl, dir=res.dir$alpha, respondents=respondents)
-}
-
-##
-#' Constructs a normalized weight vector from DCE coefficients
-##
-coeff.to.w <- function(b) {
-    rng.sizes <- aaply(ranges, 1, diff)
-    w <- b * rng.sizes
-    abs(w / sum(abs(w)))
-}
-
-eucl.dist <- function(x, y) {
-    stopifnot(length(x) == length(y))
-    sqrt(sum((x-y)^2))
-}
-
-## Binary MNL choice probability function
-ch.prob <- function(u1, u2) {
-    exp(u1) / (exp(u1) + exp(u2))
-}
-
-## Fit models for the maximum possible data set
-rum.fullsample <- simulate.dce(n.questions=16, n.respondents=560)
-mnl.fullsample.w <- coeff.to.w(rum.fullsample$mnl$coefficients)
-rpl.fullsample.w <- coeff.to.w(rum.fullsample$rpl$coefficients[1:3])
-dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
-dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
-
-## Calculate R2's
-l0 <- (560 * 16 * log(0.5))
-l1 <- rum.fullsample$mnl$logLik[1]
-R2.mnl <- 1 - ((l1 - 3) / l0)
-n.dir.samples <- 1E3
 
 ## Error handling routine to re-do the simulation in case of error
 ## due to singular design matrix (randomly bad set of questions)
@@ -165,6 +43,11 @@ error.catch.simulate <- function(n.questions=6, n.respondents=50, n.simul=100) {
         n.errs, ' errors\n', sep='')
     list(n.questions=n.questions, n.respondents=n.respondents,
          n.errors=n.errs, res.dce=resl, res.dir=res.dir)
+}
+
+## Binary MNL choice probability function
+ch.prob <- function(u1, u2) {
+    exp(u1) / (exp(u1) + exp(u2))
 }
 
 ## Add choice probabilities to the design
