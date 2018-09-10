@@ -26,7 +26,7 @@ res <- llply(scale.seq, function(scale) {
 
 err.res <- as.data.frame(laply(res, function(scale.res) {
     norm.ws <- laply(scale.res, function(res) {coeff.to.w(res$coefficients[1:3])})
-    aaply(norm.ws, 1, function(x) eucl.dist(x, as.vector(colMeans(resp.w[,2:4]))))
+    aaply(norm.ws, 1, function(x) eucl.dist(x, as.vector(colMeans(df.w[,2:4]))))
 }))
 
 err.res$scale <- scale.seq
