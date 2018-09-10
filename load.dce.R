@@ -7,6 +7,7 @@ library(gridExtra)
 library(ggthemes)
 library(MCMCprecision)
 library(devEMF)
+library(evd)
 source('dirichlet-cvm.R')
 source('simulate-cbm.R')
 source('pinkfloyd-plot.R')
@@ -97,4 +98,36 @@ coeff.to.w <- function(b) {
 eucl.dist <- function(x, y) {
     stopifnot(length(x) == length(y))
     sqrt(sum((x-y)^2))
+}
+
+## Centralized error function - EV-1
+dce.err.f <- function(scale=0.1) {rgumbel(1, loc=0, scale=scale)}
+
+resp.w <- df.w[,c('url', 'pfs', 'mod', 'sev')]
+
+make.design.matrix <- function(scale=0.4) {
+    design.matrix <- adply(resp.w, 1, function(row) {
+        rows <- design.nondom
+        rows$url <- row$url
+        rows$question.no <- paste0(rownames(row), '.', rows$q.nr)
+
+        ldply(unique(rows$q.nr), function(q) {
+            r <- subset(rows, q.nr %in% q)
+
+            data <- as.matrix(r[,c('PFS', 'mod', 'sev')])
+            ## convert to partial values
+            pvs <- cbind(smaa.pvf(data[,'PFS'], cutoffs=ranges['PFS',], values=c(0,1)),
+                         smaa.pvf(data[,'mod'], cutoffs=ranges['mod',], values=c(1,0)),
+                         smaa.pvf(data[,'sev'], cutoffs=ranges['sev',], values=c(1,0)))
+            colnames(pvs) <- colnames(data)
+            vals <- as.matrix(row[-1]) %*% t(pvs)
+            ## ADD error
+            vals[1] <- vals[1] + dce.err.f(scale)
+            vals[2] <- vals[2] + dce.err.f(scale)
+            r$choice <- if(vals[1] > vals[2]) c(1, 0) else c(0, 1)
+            r
+        })
+    }, .expand=FALSE)
+    design.matrix$idx <- paste0(design.matrix$url, '.', design.matrix$question.no)
+    design.matrix
 }

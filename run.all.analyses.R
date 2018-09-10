@@ -1,3 +1,4 @@
+source('analysis.mnlscale.R')
 source('analysis.fullsample.R')
 source('analysis.convergence.R')
 source('analysis.incorrect-pref-model.R')
