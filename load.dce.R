@@ -103,6 +103,8 @@ eucl.dist <- function(x, y) {
 ## Centralized error function - EV-1
 dce.err.f <- function(scale=0.1) {rgumbel(1, loc=0, scale=scale)}
 
+resp.w <- df.w[,c('url', 'pfs', 'mod', 'sev')]
+
 make.design.matrix <- function(scale=0.4) {
     design.matrix <- adply(resp.w, 1, function(row) {
         rows <- design.nondom
@@ -129,3 +131,4 @@ make.design.matrix <- function(scale=0.4) {
     design.matrix$idx <- paste0(design.matrix$url, '.', design.matrix$question.no)
     design.matrix
 }
+
