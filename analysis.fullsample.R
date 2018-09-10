@@ -24,7 +24,7 @@ res.rpl <- mlogit(choice ~ 0 + PFS + mod + sev,
 res.mnl <- mlogit(choice ~ 0 + PFS + mod + sev,
                   data=mdata)
 
-res.dir <- dirichlet.mle(resp.w[,c('pfs', 'mod', 'sev')])
+res.dir <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
 
 rum.fullsample <- list(mnl=res.mnl, rpl=res.rpl, dir=res.dir$alpha)
 dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
