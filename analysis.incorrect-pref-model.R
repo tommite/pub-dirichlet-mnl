@@ -2,6 +2,7 @@ source('load.dce.R')
 source('load.fullres.sample.R')
 
 ## Simulation #1: Dirichlet, whereas MNL is the correct preference model ##
+cat('=== Convergence tests - Dirichlet, correct model MNL - varying number of respondents ===\n')
 res.dir.dce <- ldply(seq(from=20, to=540, by=20),function(n.respondents) {
     dir.params <- raply(n.simul, {
         survey.results <- gen.MNL.weights.survey(n.respondents, rum.fullsample$mnl$coefficients)
@@ -70,13 +71,11 @@ error.catch.simulate.dce.dir <- function(n.questions=6, n.respondents=50, n.simu
             cat('(seed ', seed, '): ', e$message, '\n', sep='')
         })
     }
-##    cat('[', n.questions, ' questions | ', n.respondents, ' respondents]: ',
-##        n.errs, ' errors\n', sep='')
     list(n.questions=n.questions, n.respondents=n.respondents,
          n.errors=n.errs, res.dce=resl)
 }
 
-## Simulation #2: MNL, where Dirichlet is the correct preference model ##
+cat('=== Convergence tests - MNL, correct model Dirichlet - varying number of respondents ===\n')
 res.dce.dir <- llply(seq(from=20, to=540, by=20), error.catch.simulate.dce.dir,
                      n.questions=6, n.simul=n.simul, .progress='text')
 
@@ -84,11 +83,11 @@ res.dce.dir <- llply(seq(from=20, to=540, by=20), error.catch.simulate.dce.dir,
 saveRDS(res.dir.dce, 'res.incorrectmodel.dirdce.rds')
 saveRDS(res.dce.dir, 'res.incorrectmodel.dcedir.rds')
 
-## Calculate errors ##
+cat('=== Compute errors - MNL, correct model Dirichlet ===\n')
 res.dir.dce.err <- adply(res.dir.dce, 1, function(row) {
     cbind(row, err=eucl.dist(row[c('PFS', 'mod', 'sev')], mnl.fullsample.w))
 }, .progress='text')
-
+cat('=== Compute errors - Dirichlet, correct model MNL ===\n')
 test.stats.dce.dir <- ldply(res.dce.dir, function(y) {
     r <- laply(y$res.dce, function(x) {
         eucl.dist(coeff.to.w(x$coefficients),
@@ -107,8 +106,13 @@ df.molten.dce.dir <- melt(as.data.frame(test.stats.dce.dir),
                           measure.vars=c('err.mnl'))
 df.molten.dce.dir.p <- melt(as.data.frame(test.stats.dce.dir.p),
                             measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
+## Revalue for having correct subplot titles ##
+df.molten.dce.dir$variable <- revalue(df.molten.dce.dir$variable,
+                                      c('err.mnl'='MNL (correct preference model Dirichlet)'))
+df.molten.dir.dce$variable <- revalue(df.molten.dir.dce$variable,
+                                      c('err'='Dirichlet (correct preference model MNL)'))
 
-df.molten.dce.dir$variable <- revalue(df.molten.dce.dir$variable, c('err.mnl'='MNL (correct preference model Dirichlet)'))
+### Plotting ###
 plot.dce.dir <- dlply(subset(df.molten.dce.dir, n.respondents <= 550), 'variable',
                function(df.plot) {
                    cut.off <- 0.2
@@ -120,7 +124,6 @@ plot.dce.dir <- dlply(subset(df.molten.dce.dir, n.respondents <= 550), 'variable
                        ylab('Euclidean distance') + theme_economist() + scale_colour_economist() +
                        ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off))
 })
-
 pdf('dce-dir.mod-ae-significance.pdf', width=15, height=8)
 df.plot <- subset(df.molten.dce.dir.p, n.respondents <= 550 & variable == 'mod.p')
 df.plot$n.respondents <- factor(df.plot$n.respondents,
@@ -132,8 +135,6 @@ p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
 p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
 dev.off()
 
-## Revalue for having correct subplot titles ##
-df.molten.dir.dce$variable <- revalue(df.molten.dir.dce$variable, c('err'='Dirichlet (correct preference model MNL)'))
 plot.dir.dce <- dlply(subset(df.molten.dir.dce, n.respondents <= 550), 'variable',
                function(df.plot) {
                    cut.off <- 0.2
