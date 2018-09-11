@@ -33,8 +33,6 @@ mnl.fullsample.w <- coeff.to.w(rum.fullsample$mnl$coefficients[1:3])
 rpl.fullsample.w <- coeff.to.w(rum.fullsample$rpl$coefficients[1:3])
 dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
 
-n.dir.samples <- 1E3
-
 ## Calculate Adjusted R2's
 LL0 <- (nrow(design.matrix) / 2) * log(0.5)
 mnl.adj.r2 <- 1 - ((as.numeric(res.mnl$logLik) - length(res.mnl$coefficients)) / LL0)

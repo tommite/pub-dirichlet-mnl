@@ -16,6 +16,7 @@ set.seed(1911)
 memory.limit(size=16000)
 plot.theme <- theme_economist(base_size=20)
 n.simul <- 100
+n.dir.samples <- 1E3
 
 data.file <- 'data/data_DCE.csv'
 data.file.w <- 'data/data_PFS_har.csv'
