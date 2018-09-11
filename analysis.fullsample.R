@@ -34,8 +34,6 @@ mnl.fullsample.w <- coeff.to.w(rum.fullsample$mnl$coefficients[1:3])
 rpl.fullsample.w <- coeff.to.w(rum.fullsample$rpl$coefficients[1:3])
 dir.fullsample.w <- exp(res.dir$coefficients) / sum(exp(res.dir$coefficients))
 
-n.dir.samples <- 1E3
-
 ## Calculate Adjusted R2's
 LL0 <- (nrow(design.matrix) / 2) * log(0.5)
 mnl.adj.r2 <- 1 - ((as.numeric(res.mnl$logLik) - length(res.mnl$coefficients)) / LL0)
@@ -44,6 +42,12 @@ cat("=== MNL model ===\n")
 print(summary(res.mnl))
 cat("MNL adjusted McFadden's R2: ", round(mnl.adj.r2, 2), '\n')
 cat("MNL normalized weights: ", round(mnl.fullsample.w, 2), '\n')
+cat("=============\n")
+
+cat("=== MXL model ===\n")
+print(summary(res.rpl))
+#cat("MXL adjusted McFadden's R2: ", round(mxl.adj.r2, 2), '\n')
+cat("MXL normalized weights: ", round(rpl.fullsample.w, 2), '\n')
 cat("=============\n")
 
 cat("=== DIR model ===\n")
