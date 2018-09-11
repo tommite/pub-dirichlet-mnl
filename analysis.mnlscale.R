@@ -40,7 +40,7 @@ saveRDS(df.molten.mse, file='results-mnl-scale.rds')
 pdf('mnl-errors-per-scale.pdf', width=15, height=10)
 ggplot(df.molten.mse, aes(x=scale, y=value)) +
     geom_boxplot(outlier.colour='red', outlier.shape=20) +
-    ylab('Euclidean distance') + xlab(title=expression(Scale~(beta))) +
+    ylab('Euclidean distance') + xlab(expression(Scale~(beta))) +
     plot.theme + scale_colour_economist()
 #    ggtitle("Full-sample MNL distance of sample mean per Gumbel scale")
 dev.off()

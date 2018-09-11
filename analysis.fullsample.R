@@ -45,6 +45,12 @@ cat("MNL adjusted McFadden's R2: ", round(mnl.adj.r2, 2), '\n')
 cat("MNL normalized weights: ", round(mnl.fullsample.w, 2), '\n')
 cat("=============\n")
 
+cat("=== MXL model ===\n")
+print(summary(res.rpl))
+#cat("MXL adjusted McFadden's R2: ", round(mxl.adj.r2, 2), '\n')
+cat("MXL normalized weights: ", round(rpl.fullsample.w, 2), '\n')
+cat("=============\n")
+
 cat("=== DIR model ===\n")
 print(dir.fullsample)
 cat("DIR normalized weights: ", round(dir.fullsample.w, 2), '\n')

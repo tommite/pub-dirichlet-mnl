@@ -1,36 +1,38 @@
 source('load.dce.R')
-source('load.fullres.sample.R')
+source('load.fullsample.res.R')
 
 ## Binary MNL choice probability function
 ch.prob <- function(u1, u2) {
     exp(u1) / (exp(u1) + exp(u2))
 }
 
-## Add choice probabilities to the design
-design.chprob <- ddply(design.nondom, ~q.nr, function(q) {
-    utils <- aaply(q, 1, function(r) {
-        a1 <- t(as.matrix(r[,c('PFS', 'mod', 'sev')]))
-        a2 <- as.matrix(rum.fullsample$mnl$coefficients)
-        (t(a1) %*% a2) + dce.err.f() # Add random error
-    }, .expand=FALSE)
-    probs <- c(ch.prob(utils[1], utils[2]), ch.prob(utils[2], utils[1]))
-    ## calculate dirichlet probabilities
-    dir.w <- rdirichlet(n.dir.samples, dir.fullsample$alpha)
-
-    pvs <- cbind(smaa.pvf(q[,'PFS'], cutoffs=ranges['PFS',], values=c(0,1)),
-                 smaa.pvf(q[,'mod'], cutoffs=ranges['mod',], values=c(1,0)),
-                 smaa.pvf(q[,'sev'], cutoffs=ranges['sev',], values=c(1,0)))
-    dir.vals <- dir.w %*% t(pvs)
-    a1.dir.prob <- sum(aaply(dir.vals, 1, which.max) == 1) / n.dir.samples
-
-    cbind(q, u.mnl=utils, p.mnl=probs, p.dir=c(a1.dir.prob, 1-a1.dir.prob))
-})
-
 simulate.dce.distr <- function(n.questions=6, n.respondents=50) {
     stopifnot(n.respondents > 0 && n.questions > 0 && n.questions < (nrow(design.nondom)/2))
 
     q.idx.mat <- raply(n.respondents, sample(unique(design.nondom$q.nr), n.questions, replace=FALSE))
     q.idx <- as.vector(q.idx.mat)
+
+    ## Add choice probabilities to the design
+    design.chprob <- ddply(design.nondom, ~q.nr, function(q) {
+        utils <- aaply(q, 1, function(r) {
+            a1 <- t(as.matrix(r[,c('PFS', 'mod', 'sev')]))
+            a2 <- as.matrix(rum.fullsample$mnl$coefficients)
+            (t(a1) %*% a2) + dce.err.f() # Add random error
+        }, .expand=FALSE)
+        probs <- c(ch.prob(utils[1], utils[2]), ch.prob(utils[2], utils[1]))
+        ## calculate dirichlet probabilities
+        dir.w <- rdirichlet(n.dir.samples, dir.fullsample$alpha)
+
+        pvs <- cbind(smaa.pvf(q[,'PFS'], cutoffs=ranges['PFS',], values=c(0,1)),
+                     smaa.pvf(q[,'mod'], cutoffs=ranges['mod',], values=c(1,0)),
+                     smaa.pvf(q[,'sev'], cutoffs=ranges['sev',], values=c(1,0)))
+        dir.vals <- dir.w %*% t(pvs)
+        a1.dir.prob <- sum(aaply(dir.vals, 1, which.max) == 1) / n.dir.samples
+
+        cbind(q, u.mnl=utils, p.mnl=probs, p.dir=c(a1.dir.prob, 1-a1.dir.prob))
+    })
+
+
     qs <- ldply(q.idx, function(x) {subset(design.chprob, q.nr ==  x)})
 
     my.design.matrix <- ldply(seq(1, nrow(qs), by=2), function(id) {
@@ -79,8 +81,8 @@ error.catch.simulate <- function(n.questions=6, n.respondents=50, n.simul=100) {
       dir.w <- rdirichlet(n.respondents, dir.fullsample$alpha)
       dirichlet.mle(dir.w)$alpha
     })
-    cat('[', n.questions, ' questions | ', n.respondents, ' respondents]: ',
-        n.errs, ' errors\n', sep='')
+##    cat('[', n.questions, ' questions | ', n.respondents, ' respondents]: ',
+##        n.errs, ' errors\n', sep='')
     list(n.questions=n.questions, n.respondents=n.respondents,
          n.errors=n.errs, res.dce=resl, res.dir=res.dir)
 }
@@ -126,6 +128,9 @@ test.stats.mse <- function(res, f=eucl.dist) {
     })
 }
 
+## Save results for possibly re-doing the figures
+saveRDS(res.vary.n, 'res.convergence.rds')
+
 test.p.stats.mnl <- test.stats.p(res.vary.n)
 test.stats.mse <- test.stats.mse(res.vary.n)
 
@@ -140,7 +145,7 @@ df.plot <- subset(df.molten.p, n.respondents <= 560 & n.respondents >=100 & vari
 df.plot$n.respondents <- factor(df.plot$n.respondents,
                                 labels=unique(df.plot$n.respondents))
 p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
-    geom_boxplot(outlier.colour='red', outlier.shape=20) +
+    geom_boxplot(outlier.colour='red', outlier.shape=20, outlier.size=2) +
     ylab('p-value') + xlab('Number of respondents') + plot.theme + scale_colour_economist() +
     coord_cartesian(ylim=c(0, 0.2))
 ##    ggtitle('Moderate AE coefficient significance')
@@ -157,10 +162,11 @@ plots <- dlply(subset(df.molten.mse, n.respondents <= 560), 'variable',
                    df.plot$n.respondents <- factor(df.plot$n.respondents,
                                                    labels=unique(df.plot$n.respondents))
                    ggplot(df.plot, aes(x=n.respondents, y=value)) +
-                       geom_boxplot(outlier.colour='red', outlier.shape=20) +
+                       geom_boxplot(outlier.colour='red', outlier.shape=20, outlier.size=2) +
                        ylab('Euclidean distance') + xlab('Number of respondents') +
                        plot.theme + scale_colour_economist() +
-                       ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off))
+                       ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off)) +
+                       geom_hline(aes(yintercept=0.15), color='darkblue', linetype='dashed', size=1)
 })
 do.call(grid.arrange, c(plots, ncol=1))
 dev.off()
