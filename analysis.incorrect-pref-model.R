@@ -23,8 +23,7 @@ simulate.dce.dir <- function(n.questions=6, n.respondents=50) {
                          smaa.pvf(data[,'sev'], cutoffs=ranges['sev',], values=c(1,0)))
             colnames(pvs) <- colnames(data)
             vals <- as.numeric(ws) %*% t(pvs)
-            ## Choices with random errors
-            r$choice <- if(vals[1] + dce.err.f() > vals[2] + dce.err.f())
+            r$choice <- if(vals[1] > vals[2] )
                             c(1, 0)
                         else c(0, 1)
             r
