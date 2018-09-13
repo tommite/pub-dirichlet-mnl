@@ -24,18 +24,17 @@ res <- llply(scale.seq, function(scale) {
         })
 }, .progress='text')
 
+## Save raw results for possibly changing plot later on
+saveRDS(res, file='results-mnl-scale.rds')
+
 err.res <- as.data.frame(laply(res, function(scale.res) {
     norm.ws <- laply(scale.res, function(res) {coeff.to.w(res$coefficients[1:3])})
     aaply(norm.ws, 1, function(x) eucl.dist(x, as.vector(colMeans(resp.w[,2:4]))))
 }))
-
 err.res$scale <- scale.seq
 
 df.molten.mse <- melt(err.res, measure.vars=1:20)
 df.molten.mse$scale <- as.factor(err.res$scale)
-
-## Save results for possibly changing plot later on
-saveRDS(df.molten.mse, file='results-mnl-scale.rds')
 
 pdf('mnl-errors-per-scale.pdf', width=15, height=10)
 ggplot(df.molten.mse, aes(x=scale, y=value)) +

@@ -7,10 +7,10 @@ library(gridExtra)
 library(ggthemes)
 library(MCMCprecision)
 library(devEMF)
-library(evd)
 source('dirichlet-cvm.R')
 source('simulate-cbm.R')
 source('pinkfloyd-plot.R')
+source('err.f.R')
 
 set.seed(1911)
 memory.limit(size=16000)
@@ -101,10 +101,6 @@ eucl.dist <- function(x, y) {
     sqrt(sum((x-y)^2))
 }
 
-FINAL.SCALE <- 0.3
-
-## Centralized error function - EV-1
-dce.err.f <- function(scale=FINAL.SCALE) {rgumbel(1, loc=0, scale=scale)}
 
 resp.w <- df.w[,c('url', 'pfs', 'mod', 'sev')]
 

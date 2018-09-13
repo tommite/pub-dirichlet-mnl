@@ -33,10 +33,11 @@ simulate.dce.dir <- function(n.questions=6, n.respondents=50) {
                          smaa.pvf(data[,'mod'], cutoffs=ranges['mod',], values=c(1,0)),
                          smaa.pvf(data[,'sev'], cutoffs=ranges['sev',], values=c(1,0)))
             colnames(pvs) <- colnames(data)
-            vals[1] <- vals[1] <- dce.err.f() # Add random errors
-            vals[2] <- vals[2] <- dce.err.f()
             vals <- as.numeric(ws) %*% t(pvs)
-            r$choice <- if(vals[1] > vals[2]) c(1, 0) else c(0, 1)
+            ## Choices with random errors
+            r$choice <- if(vals[1] + dce.err.f() > vals[2] + dce.err.f())
+                            c(1, 0)
+                        else c(0, 1)
             r
         })
         x$id <- rownames(row)

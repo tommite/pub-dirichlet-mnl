@@ -1,15 +1,21 @@
 ##### Simulate the outcome from a choice-based matching experiment #####
 library(smaa)
 library(hitandrun)
+source('err.f.R')
 
 #### Choice-based matching with MNL population model ####
 
-# Generate MNL choice-probabilities to the questions for the choice-based matching procedure
-add.choice.prob <- function(coefficients,questions) {
+## Generate utilitiies
+add.choice.util <- function(coefficients,questions) {
   questions$xbeta <- as.matrix(questions[,c("PFS","mod","sev")]) %*% coefficients
   choice.prob <- c()
-  for (i in 1:dim(questions)[1]) {
-    choice.prob <- c(choice.prob,exp(questions$xbeta[i])/sum(exp(questions$xbeta[questions$q.nr==questions$q.nr[i]])))
+  for (i in 1:nrow(questions)) {
+      choice.prob <- c(choice.prob,
+                       exp(questions$xbeta[i] + dce.err.f()) /
+                       sum(exp(questions$xbeta[questions$q.nr==questions$q.nr[i]] +
+                               sum(replicate(dce.err(),
+                                             length(questions$xbeta[questions$q.nr==questions$q.nr[i]]) )))
+                       )
   }
   questions$choice.prob <- choice.prob
   questions
@@ -19,11 +25,11 @@ add.choice.prob <- function(coefficients,questions) {
 ordinal.swing.MNL <- function(coefficients) {
 
   question.1 <- data.frame(q.nr=rep(1,3),alt=c("A","B","C"),PFS=c(90,50,50),mod=c(85,45,85),sev=c(80,80,20))
-  question.1 <- add.choice.prob(coefficients,question.1)
+  question.1 <- add.choice.util(coefficients,question.1)
   choice.1 <- runif(1)
   if (choice.1<=question.1$choice.prob[1]) { # PFS most important
     question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(90,90),mod=c(45,85),sev=c(80,20))
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
     if (runif(1)<=question.2$choice.prob[1]) { # mod second most important
       results.ordinal.swing <- list(first="PFS",second="mod",third="sev",prob=question.1$choice.prob[1]*question.2$choice.prob[1])
     } else { # sev second most important
@@ -32,7 +38,7 @@ ordinal.swing.MNL <- function(coefficients) {
   } else {
     if (choice.1<=question.1$choice.prob[1]+question.1$choice.prob[2]) { # mod most important
       question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(90,50),mod=c(45,45),sev=c(80,20))
-      question.2 <- add.choice.prob(coefficients,question.2)
+      question.2 <- add.choice.util(coefficients,question.2)
       if (runif(1)<=question.2$choice.prob[1]) { # PFS second most important
         results.ordinal.swing <- list(first="mod",second="PFS",third="sev",prob=question.1$choice.prob[2]*question.2$choice.prob[1])
       } else { # sev second most important
@@ -40,7 +46,7 @@ ordinal.swing.MNL <- function(coefficients) {
       }
     } else { # sev most important
       question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(90,50),mod=c(85,45),sev=c(20,20))
-      question.2 <- add.choice.prob(coefficients,question.2)
+      question.2 <- add.choice.util(coefficients,question.2)
       if (runif(1)<=question.2$choice.prob[1]) { # PFS second most important
         results.ordinal.swing <- list(first="sev",second="PFS",third="mod",prob=question.1$choice.prob[3]*question.2$choice.prob[1])
       } else { # modv second most important
@@ -57,12 +63,12 @@ ordinal.swing.MNL <- function(coefficients) {
 cbm.PFS.sev <- function(coefficients) {
 
   question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(70,50),mod=c(65,65),sev=c(80,20)) # First bisection step
-  question.1 <- add.choice.prob(coefficients,question.1)
+  question.1 <- add.choice.util(coefficients,question.1)
 
   if(runif(1)<=question.1$choice.prob[1]) {
 
     question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(60,50),mod=c(65,65),sev=c(80,20)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- lowerRatioConstraint(3,1,3,4)
@@ -73,7 +79,7 @@ cbm.PFS.sev <- function(coefficients) {
   } else {
 
     question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(80,50),mod=c(65,65),sev=c(80,20)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- mergeConstraints(lowerRatioConstraint(3,1,3,1+1/3),upperRatioConstraint(3,1,3,2))
@@ -91,12 +97,12 @@ cbm.PFS.sev <- function(coefficients) {
 cbm.PFS.mod <- function(coefficients) {
 
   question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(70,50),mod=c(85,45),sev=c(50,50)) # First bisection step
-  question.1 <- add.choice.prob(coefficients,question.1)
+  question.1 <- add.choice.util(coefficients,question.1)
 
   if(runif(1)<=question.1$choice.prob[1]) {
 
     question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(60,50),mod=c(85,45),sev=c(50,50)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- lowerRatioConstraint(3,1,2,4)
@@ -107,7 +113,7 @@ cbm.PFS.mod <- function(coefficients) {
   } else {
 
     question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(80,50),mod=c(85,45),sev=c(50,50)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- mergeConstraints(lowerRatioConstraint(3,1,2,1+1/3),upperRatioConstraint(3,1,2,2))
@@ -125,12 +131,12 @@ cbm.PFS.mod <- function(coefficients) {
 cbm.mod.sev <- function(coefficients) {
 
   question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(70,70),mod=c(65,85),sev=c(80,20)) # First bisection step
-  question.1 <- add.choice.prob(coefficients,question.1)
+  question.1 <- add.choice.util(coefficients,question.1)
 
   if(runif(1)<=question.1$choice.prob[1]) {
 
     question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(70,70),mod=c(75,85),sev=c(80,20)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- lowerRatioConstraint(3,2,3,4)
@@ -141,7 +147,7 @@ cbm.mod.sev <- function(coefficients) {
   } else {
 
     question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(70,70),mod=c(55,65),sev=c(80,20)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- mergeConstraints(lowerRatioConstraint(3,2,3,1+1/3),upperRatioConstraint(3,2,3,2))
@@ -159,12 +165,12 @@ cbm.mod.sev <- function(coefficients) {
 cbm.mod.PFS <- function(coefficients) {
 
   question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(50,90),mod=c(65,85),sev=c(50,50)) # First bisection step
-  question.1 <- add.choice.prob(coefficients,question.1)
+  question.1 <- add.choice.util(coefficients,question.1)
 
   if(runif(1)<=question.1$choice.prob[1]) {
 
     question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(50,90),mod=c(75,85),sev=c(50,50)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- lowerRatioConstraint(3,2,1,4)
@@ -175,7 +181,7 @@ cbm.mod.PFS <- function(coefficients) {
   } else {
 
     question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(50,90),mod=c(55,85),sev=c(50,50)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- mergeConstraints(lowerRatioConstraint(3,2,1,1+1/3),upperRatioConstraint(3,2,1,2))
@@ -193,12 +199,12 @@ cbm.mod.PFS <- function(coefficients) {
 cbm.sev.PFS <- function(coefficients) {
 
   question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(50,90),mod=c(65,65),sev=c(50,80)) # First bisection step
-  question.1 <- add.choice.prob(coefficients,question.1)
+  question.1 <- add.choice.util(coefficients,question.1)
 
   if(runif(1)<=question.1$choice.prob[1]) {
 
     question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(50,90),mod=c(65,65),sev=c(65,80)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- lowerRatioConstraint(3,3,1,4)
@@ -209,7 +215,7 @@ cbm.sev.PFS <- function(coefficients) {
   } else {
 
     question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(50,90),mod=c(65,65),sev=c(35,80)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- mergeConstraints(lowerRatioConstraint(3,3,1,1+1/3),upperRatioConstraint(3,3,1,2))
@@ -227,12 +233,12 @@ cbm.sev.PFS <- function(coefficients) {
 cbm.sev.mod <- function(coefficients) {
 
   question.1 <- data.frame(q.nr=rep(1,2),alt=c("A","B"),PFS=c(70,70),mod=c(85,45),sev=c(50,80)) # First bisection step
-  question.1 <- add.choice.prob(coefficients,question.1)
+  question.1 <- add.choice.util(coefficients,question.1)
 
   if(runif(1)<=question.1$choice.prob[1]) {
 
     question.2 <- data.frame(q.nr=rep(2,2),alt=c("A","B"),PFS=c(70,70),mod=c(45,85),sev=c(65,80)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- lowerRatioConstraint(3,3,2,4)
@@ -243,7 +249,7 @@ cbm.sev.mod <- function(coefficients) {
   } else {
 
     question.2 <- data.frame(q.nr=rep(3,2),alt=c("A","B"),PFS=c(70,70),mod=c(85,45),sev=c(35,80)) # Second bisection step
-    question.2 <- add.choice.prob(coefficients,question.2)
+    question.2 <- add.choice.util(coefficients,question.2)
 
     if(runif(1)<=question.2$choice.prob[1]) {
       constr <- mergeConstraints(lowerRatioConstraint(3,3,2,1+1/3),upperRatioConstraint(3,3,2,2))

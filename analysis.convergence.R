@@ -17,7 +17,7 @@ simulate.dce.distr <- function(n.questions=6, n.respondents=50) {
         utils <- aaply(q, 1, function(r) {
             a1 <- t(as.matrix(r[,c('PFS', 'mod', 'sev')]))
             a2 <- as.matrix(rum.fullsample$mnl$coefficients)
-            (t(a1) %*% a2) + dce.err.f() # Add random error
+            t(a1) %*% a2
         }, .expand=FALSE)
         probs <- c(ch.prob(utils[1], utils[2]), ch.prob(utils[2], utils[1]))
         ## calculate dirichlet probabilities
@@ -32,15 +32,13 @@ simulate.dce.distr <- function(n.questions=6, n.respondents=50) {
         cbind(q, u.mnl=utils, p.mnl=probs, p.dir=c(a1.dir.prob, 1-a1.dir.prob))
     })
 
-
     qs <- ldply(q.idx, function(x) {subset(design.chprob, q.nr ==  x)})
 
     my.design.matrix <- ldply(seq(1, nrow(qs), by=2), function(id) {
         rows <- qs[id:(id+1),]
         rows$idx <- paste0(id, '.', rows$q.nr)
 
-        rnd <- runif(1)
-        if (rnd <= rows[1,'p.mnl']) {
+        if (rows[1,'u.mnl'] + dce.err.f() > rows[2, 'u.mnl'] + dce.err.f()) {
             rows$choice <- c(1, 0)
         } else {
             rows$choice <- c(0, 1)
@@ -140,33 +138,31 @@ df.molten.p <- melt(as.data.frame(test.p.stats.mnl),
 df.molten.mse <- melt(as.data.frame(test.stats.mse),
                       measure.vars=c('err.mnl', 'err.dir'))
 
-pdf('mod-ae-significance.pdf', width=15, height=8)
-df.plot <- subset(df.molten.p, n.respondents <= 560 & n.respondents >=100 & variable == 'mod.p')
+## Revalue for having correct subplot titles ##
+df.molten.mse$variable <- revalue(df.molten.mse$variable, c('err.mnl'='MNL', 'err.dir'='Dirichlet'))
+pdf('error-eucl.pdf', width=15, height=10)
+do.conv.plot <- function(df.plot, cut.off) {
+    df.plot[df.plot$value > cut.off, 'value'] <- cut.off
+    df.plot$n.respondents <- factor(df.plot$n.respondents,
+                                    labels=unique(df.plot$n.respondents))
+    ggplot(df.plot, aes(x=n.respondents, y=value)) +
+        geom_boxplot(outlier.colour='red', outlier.shape=20, outlier.size=2) +
+        ylab('Euclidean distance') + xlab('Number of respondents') +
+        plot.theme + scale_colour_economist() +
+        ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off)) +
+        geom_hline(aes(yintercept=cut.off), color='darkblue', linetype='dashed', size=1)
+}
+grid.arrange(do.conv.plot(subset(df.molten.mse, n.respondents <= 560 & variable == 'MNL'), 0.15),
+             do.conv.plot(subset(df.molten.mse, n.respondents <= 560 & variable == 'Dirichlet'), 0.15), ncol=1)
+dev.off()
+
+df.plot <- subset(df.molten.p, n.respondents <= 100 & variable == 'mod.p')
+pdf('mod-ae-significance.pdf', width=8, height=8)
 df.plot$n.respondents <- factor(df.plot$n.respondents,
                                 labels=unique(df.plot$n.respondents))
 p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
     geom_boxplot(outlier.colour='red', outlier.shape=20, outlier.size=2) +
     ylab('p-value') + xlab('Number of respondents') + plot.theme + scale_colour_economist() +
-    coord_cartesian(ylim=c(0, 0.2))
-##    ggtitle('Moderate AE coefficient significance')
+    coord_cartesian(ylim=c(0, 0.80))
 p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
-dev.off()
-
-pdf('error-eucl.pdf', width=15, height=10)
-## Revalue for having correct subplot titles ##
-df.molten.mse$variable <- revalue(df.molten.mse$variable, c('err.mnl'='MNL', 'err.dir'='Dirichlet'))
-plots <- dlply(subset(df.molten.mse, n.respondents <= 560), 'variable',
-               function(df.plot) {
-                   cut.off <- 0.15
-                   df.plot[df.plot$value > cut.off, 'value'] <- cut.off
-                   df.plot$n.respondents <- factor(df.plot$n.respondents,
-                                                   labels=unique(df.plot$n.respondents))
-                   ggplot(df.plot, aes(x=n.respondents, y=value)) +
-                       geom_boxplot(outlier.colour='red', outlier.shape=20, outlier.size=2) +
-                       ylab('Euclidean distance') + xlab('Number of respondents') +
-                       plot.theme + scale_colour_economist() +
-                       ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off)) +
-                       geom_hline(aes(yintercept=0.15), color='darkblue', linetype='dashed', size=1)
-})
-do.call(grid.arrange, c(plots, ncol=1))
 dev.off()
