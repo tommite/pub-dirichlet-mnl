@@ -1,6 +1,6 @@
 library(plyr)
 library(smaa)
-library(MCMCprecision)
+library(DirichletReg)
 
 source('load.dce.R')
 
@@ -24,14 +24,15 @@ res.rpl <- mlogit(choice ~ 0 + PFS + mod + sev,
 res.mnl <- mlogit(choice ~ 0 + PFS + mod + sev,
                   data=mdata)
 
-res.dir <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
+df.w$Y <- DR_data(df.w[,c("pfs","mod","sev")]) # Add dirichlet response variable to the weight dataset
+res.dir <- DirichReg(Y~1,df.w) # Fit null model (model without any covariates) to the weight data
 
-rum.fullsample <- list(mnl=res.mnl, rpl=res.rpl, dir=res.dir$alpha)
-dir.fullsample <- dirichlet.mle(df.w[,c('pfs', 'mod', 'sev')])
+rum.fullsample <- list(mnl=res.mnl, rpl=res.rpl, dir=exp(res.dir$coefficients))
+dir.fullsample <- DirichReg(Y~1,df.w)
 
 mnl.fullsample.w <- coeff.to.w(rum.fullsample$mnl$coefficients[1:3])
 rpl.fullsample.w <- coeff.to.w(rum.fullsample$rpl$coefficients[1:3])
-dir.fullsample.w <- dir.fullsample$alpha / sum(dir.fullsample$alpha)
+dir.fullsample.w <- exp(res.dir$coefficients) / sum(exp(res.dir$coefficients))
 
 ## Calculate Adjusted R2's
 LL0 <- (nrow(design.matrix) / 2) * log(0.5)
