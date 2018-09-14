@@ -12,10 +12,6 @@ res.dir.dce <- ldply(seq(from=20, to=540, by=20),function(n.respondents) {
     colnames(dir.norm) <- c('PFS', 'mod', 'sev')
     cbind(dir.norm, 'n.respondents'=n.respondents)
 }, .progress='text')
-res.dir.dce.err <- adply(res.dir.dce, 1, function(row) {
-    cbind(row, err=eucl.dist(row[c('PFS', 'mod', 'sev')], mnl.fullsample.w))
-}, .progress='text')
-
 
 ## Simulation #2: MNL, Dirichlet correct preference model
 simulate.dce.dir <- function(n.questions=6, n.respondents=50) {
@@ -84,7 +80,15 @@ cat('=== Convergence tests -- Dirichlet, correct model MNL ===\n')
 res.dce.dir <- llply(seq(from=20, to=540, by=20), error.catch.simulate.dce.dir,
                      n.questions=6, n.simul=n.simul, .progress='text')
 
+## Save results for possibly re-doing the figures
+saveRDS(res.dce.dir, file='res.incorrect-pref-model.dce.dir.rds')
+saveRDS(res.dir.dce, file='res.incorrect-pref-model.dir.dce.rds')
+
 ## Compute test statistics ##
+res.dir.dce.err <- adply(res.dir.dce, 1, function(row) {
+    cbind(row, err=eucl.dist(row[c('PFS', 'mod', 'sev')], mnl.fullsample.w))
+}, .progress='text')
+
 test.stats.dce.dir <- ldply(res.dce.dir, function(y) {
     r <- laply(y$res.dce, function(x) {
         eucl.dist(coeff.to.w(x$coefficients),
@@ -93,7 +97,7 @@ test.stats.dce.dir <- ldply(res.dce.dir, function(y) {
     r.full <- cbind(r, y$n.questions, y$n.respondents)
     colnames(r.full) <- c('err.mnl', 'n.quest', 'n.respondents')
     r.full
-})
+}, .progress='text')
 test.stats.dce.dir.p <- test.stats.p(res.dce.dir)
 
 ### Plotting ###
@@ -107,6 +111,17 @@ df.molten.dir.dce <- melt(as.data.frame(res.dir.dce.err),
 ## Revalue for having correct subplot titles ##
 df.molten.dir.dce$variable <- revalue(df.molten.dir.dce$variable, c('err'='Dirichlet (correct preference model MNL)'))
 
+df.plot <- subset(df.molten.dce.dir.p, n.respondents <= 550 & variable == 'mod.p')
+pdf('dce-dir.mod-ae-significance.pdf', width=15, height=8)
+df.plot$n.respondents <- factor(df.plot$n.respondents,
+                                labels=unique(df.plot$n.respondents))
+p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
+    geom_boxplot(outlier.colour='red', outlier.shape=20, outlier.size-2) +
+    ylab('p-value') + theme_economist() + scale_colour_economist() +
+    ggtitle('Moderate AEs coefficient significance') + coord_cartesian(ylim=c(0, 0.7))
+p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
+dev.off()
+
 plot.dce.dir <- dlply(subset(df.molten.dce.dir, n.respondents <= 550), 'variable',
                function(df.plot) {
                    cut.off <- 0.2
@@ -114,22 +129,12 @@ plot.dce.dir <- dlply(subset(df.molten.dce.dir, n.respondents <= 550), 'variable
                    df.plot$n.respondents <- factor(df.plot$n.respondents,
                                                    labels=unique(df.plot$n.respondents))
                    ggplot(df.plot, aes(x=n.respondents, y=value)) +
-                       geom_boxplot(outlier.colour='red', outlier.shape=20) +
+                       geom_boxplot(outlier.colour='red', outlier.shape=20, outlier.size=2) +
                        ylab('Euclidean distance') + theme_economist() + scale_colour_economist() +
-                       ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off))
+                       ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off))+
+                       xlab('Number of respondents') +
+                       geom_hline(aes(yintercept=cut.off), color='darkblue', linetype='dashed', size=1)
 })
-
-df.plot <- subset(df.molten.dce.dir.p, n.respondents <= 550 & variable == 'mod.p')
-pdf('dce-dir.mod-ae-significance.pdf', width=15, height=8)
-df.plot$n.respondents <- factor(df.plot$n.respondents,
-                                labels=unique(df.plot$n.respondents))
-p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
-    geom_boxplot(outlier.colour='red', outlier.shape=20) +
-    ylab('p-value') + theme_economist() + scale_colour_economist() +
-    ggtitle('Moderate AEs coefficient significance') + coord_cartesian(ylim=c(0, 0.7))
-p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
-dev.off()
-
 plot.dir.dce <- dlply(subset(df.molten.dir.dce, n.respondents <= 550), 'variable',
                function(df.plot) {
                    cut.off <- 0.2
@@ -137,9 +142,11 @@ plot.dir.dce <- dlply(subset(df.molten.dir.dce, n.respondents <= 550), 'variable
                    df.plot$n.respondents <- factor(df.plot$n.respondents,
                                                    labels=unique(df.plot$n.respondents))
                    ggplot(df.plot, aes(x=n.respondents, y=value)) +
-                       geom_boxplot(outlier.colour='red', outlier.shape=20) +
+                       geom_boxplot(outlier.colour='red', outlier.shape=20, outlier.size=2) +
                        ylab('Euclidean distance') + theme_economist() + scale_colour_economist() +
-                       ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off))
+                       ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off)) +
+                       xlab('Number of respondents') +
+                       geom_hline(aes(yintercept=cut.off), color='darkblue', linetype='dashed', size=1)
                })
 pdf('error-eucl-wrong-pmodel.pdf', width=15, height=10)
 grid.arrange(plot.dce.dir[[1]], plot.dir.dce[[1]], ncol=1)

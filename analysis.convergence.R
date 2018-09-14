@@ -90,27 +90,6 @@ cat('=== Convergence tests - varying number of respondents ===\n')
 res.vary.n <- llply(seq(from=20, to=540, by=20), error.catch.simulate,
                     n.questions=6, n.simul=n.simul, .progress='text')
 
-## calculates p-values
-test.stats.p <- function(res) {
-    ldply(res, function(y) {
-        r <- laply(y$res.dce, function(x) {
-            b <- x$coefficients[1:3]
-            w <- coeff.to.w(b)
-            p <- c(1, 1, 1)
-            tryCatch({
-                std.err <- sqrt(diag(solve(-x$hessian[1:3,1:3])))
-                z <- b / std.err
-                p <- 2 * (1 - pnorm(abs(z)))
-            }, error=function(e) { })
-            c(as.vector(p), as.vector(w), y$n.questions, y$n.respondents)
-        })
-        colnames(r) <- c(paste0(names(y$res.dce[[1]]$coefficients), '.p'),
-                         paste0(names(y$res.dce[[1]]$coefficients), '.w'),
-                         'n.quest', 'n.respondents')
-        r
-    })
-}
-
 test.stats.mse <- function(res, f=eucl.dist) {
     ldply(res, function(y) {
         r <- laply(y$res.dce, function(x) {
@@ -123,7 +102,7 @@ test.stats.mse <- function(res, f=eucl.dist) {
                    y$n.questions, y$n.respondents)
         colnames(r.full) <- c('err.mnl', 'err.dir', 'n.quest', 'n.respondents')
         r.full
-    })
+    }, .progress='text')
 }
 
 ## Save results for possibly re-doing the figures
@@ -137,6 +116,14 @@ df.molten.p <- melt(as.data.frame(test.p.stats.mnl),
                       measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
 df.molten.mse <- melt(as.data.frame(test.stats.mse),
                       measure.vars=c('err.mnl', 'err.dir'))
+
+## Display percentages within 0.05
+l_ply(seq(from=20, to=540, by=20), function(ss) {
+    data <- subset(test.stats.mse, n.respondents == ss)
+    cat('SS ', ss,
+        ' MNL: ', sum(data$err.mnl < 0.05) / nrow(data),
+        ' DIR: ', sum(data$err.dir < 0.05) / nrow(data), '\n')
+})
 
 ## Revalue for having correct subplot titles ##
 df.molten.mse$variable <- revalue(df.molten.mse$variable, c('err.mnl'='MNL', 'err.dir'='Dirichlet'))

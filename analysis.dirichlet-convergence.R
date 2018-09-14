@@ -1,5 +1,5 @@
 source('load.dce.R')
-source('load.fullres.sample.R')
+source('load.fullsample.res.R')
 
 n.simul <- 100
 
@@ -31,8 +31,8 @@ df.molten.mse$n.respondents <- as.factor(df.molten.mse$n.respondents)
 pdf('error-dirichlet-convergence.pdf', width=15, height=10)
 ggplot(df.molten.mse, aes(x=n.respondents, y=value)) +
     geom_boxplot(outlier.colour='red', outlier.shape=20) +
-    ylab('Euclidean distance') + xlab('Number of respondents') +
+    ylab('Euclidean distance') + xlab('Number of draws from the Dirichlet distribution') +
     plot.theme + scale_colour_economist() +
-    ggtitle("Dirichlet convergence")
+    ggtitle("")
 dev.off()
 

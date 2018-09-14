@@ -131,3 +131,23 @@ make.design.matrix <- function(scale=FINAL.SCALE) {
     design.matrix
 }
 
+## calculates p-values
+test.stats.p <- function(res) {
+    ldply(res, function(y) {
+        r <- laply(y$res.dce, function(x) {
+            b <- x$coefficients[1:3]
+            w <- coeff.to.w(b)
+            p <- c(1, 1, 1)
+            tryCatch({
+                std.err <- sqrt(diag(solve(-x$hessian[1:3,1:3])))
+                z <- b / std.err
+                p <- 2 * (1 - pnorm(abs(z)))
+            }, error=function(e) { })
+            c(as.vector(p), as.vector(w), y$n.questions, y$n.respondents)
+        })
+        colnames(r) <- c(paste0(names(y$res.dce[[1]]$coefficients), '.p'),
+                         paste0(names(y$res.dce[[1]]$coefficients), '.w'),
+                         'n.quest', 'n.respondents')
+        r
+    }, .progress='text')
+}

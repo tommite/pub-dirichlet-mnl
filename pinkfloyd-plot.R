@@ -12,12 +12,16 @@ rotate <- function(x) {
   c(x[2],-1*x[1])
 }
 
-pinkfloyd.fig <- function(data) {
+pinkfloyd.fig <- function(data, mean.w) {
     eq.constr <- list(constr = t(rep(1, 3)), dir = "=", rhs = 1)
     basis <- solution.basis(eq.constr)
     data.transformed <- c()
+
+    tform <- function(datarow) { ## Function for transforming coordinates
+        rotate(as.vector(t(basis$basis) %*% (as.numeric(datarow) - basis$translate)))
+    }
     for (i in 1:dim(data)[1]) {
-        data.transformed <- rbind(data.transformed,rotate(as.vector(t(basis$basis) %*% (as.numeric(data[i,]) - basis$translate))))
+        data.transformed <- rbind(data.transformed, tform(data[i,]))
     }
     colnames(data.transformed) <- c("x1","x2")
     data.transformed <- data.frame(data.transformed)
@@ -47,11 +51,14 @@ pinkfloyd.fig <- function(data) {
     p <- p + geom_polygon(aes(x=x,y=y,group=ranking,fill=ranking),data=data.polygon,alpha=0.8)
 
     p <- p + theme(panel.background=element_rect(fill="white"),
-                   legend.position="bottom",legend.title=element_blank(),
+                   legend.position="bottom",
+                   legend.title=element_blank(),
                    legend.direction="horizontal",
                    legend.margin=margin(t=-0.75, unit='cm'),
                    aspect.ratio=1,legend.text=element_text(size=14, color='#464646'),
-                   plot.margin=unit(c(-0.5,0,0.5,0),unit="cm"))
+                   plot.margin=unit(c(-0.5,0,0.5,0),unit="cm"),
+                   plot.title=element_text(hjust=0.5, size=20, face='bold')
+                   )
 
     ## Add coordinate lines
     ticks <- seq(0,1,0.1)
@@ -92,6 +99,7 @@ pinkfloyd.fig <- function(data) {
 
                                         # Add individual weights
     p <- p + geom_point(size=1,alpha=0.8)
-##    p <- p + geom_point(x=0.12801,y=0.24789,size=2,colour="red",shape=23,fill="red")
+    mean.coord <- tform(mean.w)
+    p <- p + geom_point(x=mean.coord[1],y=mean.coord[2],size=3,colour="red",shape=23,fill="red")
     p
 }
