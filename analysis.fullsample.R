@@ -25,6 +25,21 @@ res.rpl <- mlogit(choice ~ 0 + PFS + mod + sev,
 res.mnl <- mlogit(choice ~ 0 + PFS + mod + sev,
                   data=mdata)
 
+
+## Perform bootstrapping to obtain confidence intervals for the sample mean of the weights
+bootstrapWeights <- function(weight.data,n.samples) { 
+  weights <- c()
+  for (i in 1:n.samples) {
+    weights <- rbind(weights,colMeans(weight.data[sample(1:nrow(weight.data),nrow(weight.data),replace=T),]))
+  }
+  weights
+}
+  
+weight.data <- df.w[,c("pfs","mod","sev")]
+bootstrap.samples <- bootstrapWeights(weight.data,1e4)
+round(apply(bootstrap.samples,MARGIN=2,quantile,probs=c(0.025,0.975)),2) # Bootstap 95% confidence intervals
+
+## Fit models to full-sample data
 df.w$Y <- DR_data(df.w[,c("pfs","mod","sev")]) # Add dirichlet response variable to the weight dataset
 res.dir <- DirichReg(Y~1,df.w) # Fit null model (model without any covariates) to the weight data
 
