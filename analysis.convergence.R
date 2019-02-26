@@ -185,7 +185,7 @@ df.molten.mar$variable <- revalue(df.molten.mar$variable, c('MAR.dce.mod'='MNL -
                                                             'MAR.dir.mod'='Dirichlet - Moderate AEs',
                                                             'MAR.dir.sev'='Dirichlet - Severe AEs'
                                                             ))
-do.mar.plot <- function(df.plot, cut.off) {
+do.mar.plot <- function(df.plot, cut.off, limit=0) {
     df.plot[df.plot$value > cut.off, 'value'] <- cut.off
     df.plot$n.respondents <- factor(df.plot$n.respondents,
                                     labels=unique(df.plot$n.respondents))
@@ -193,7 +193,7 @@ do.mar.plot <- function(df.plot, cut.off) {
         geom_boxplot(outlier.colour='red', outlier.shape=20, outlier.size=2) +
         ylab('MAR') + xlab('Number of respondents') +
         plot.theme + scale_colour_economist() +
-        ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(0, cut.off)) +
+        ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(limit, cut.off)) +
         geom_hline(aes(yintercept=cut.off), color='darkblue', linetype='dashed', size=1)
 }
 pdf('error-mar-moderate.pdf', width=15, height=10)
@@ -204,7 +204,7 @@ grid.arrange(do.mar.plot(subset(df.molten.mar,
 dev.off()
 pdf('error-mar-severe.pdf', width=15, height=10)
 grid.arrange(do.mar.plot(subset(df.molten.mar,
-                                n.respondents <= 560 & variable == 'MNL - Severe AEs'), 5.0),
+                                n.respondents <= 560 & variable == 'MNL - Severe AEs'), 5.0, 1.0),
              do.mar.plot(subset(df.molten.mar,
-                                n.respondents <= 560 & variable == 'Dirichlet - Severe AEs'), 5.0), ncol=1)
+                                n.respondents <= 560 & variable == 'Dirichlet - Severe AEs'), 5.0, 1.0), ncol=1)
 dev.off()
