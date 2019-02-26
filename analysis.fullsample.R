@@ -28,14 +28,14 @@ res.mnl <- mlogit(choice ~ 0 + PFS + mod + sev,
 
 
 ## Perform bootstrapping to obtain confidence intervals for the sample mean of the weights
-bootstrapWeights <- function(weight.data,n.samples) { 
+bootstrapWeights <- function(weight.data,n.samples) {
   weights <- c()
   for (i in 1:n.samples) {
     weights <- rbind(weights,colMeans(weight.data[sample(1:nrow(weight.data),nrow(weight.data),replace=T),]))
   }
   weights
 }
-  
+
 weight.data <- df.w[,c("pfs","mod","sev")]
 bootstrap.samples <- bootstrapWeights(weight.data,1e4)
 round(apply(bootstrap.samples,MARGIN=2,quantile,probs=c(0.025,0.975)),2) # Bootstap 95% confidence intervals
@@ -75,6 +75,9 @@ print(summary(res.mnl))
 cat("MNL adjusted McFadden's R2: ", round(mnl.adj.r2, 2), '\n')
 cat("MNL normalized weights:\n")
 print(round(delta.ci(rum.fullsample$mnl), 2))
+cat("MNL MARs:\n")
+print(round(deltaMethod(coef(rum.fullsample$mnl), "PFS/-mod", vcov=-solve(rum.fullsample$mnl$hessian)), 2))
+print(round(deltaMethod(coef(rum.fullsample$mnl), "PFS/-sev", vcov=-solve(rum.fullsample$mnl$hessian)), 2))
 cat("=============\n")
 
 cat("=== MXL model ===\n")
@@ -82,6 +85,9 @@ print(summary(res.rpl))
 cat("MXL adjusted McFadden's R2: ", round(mxl.adj.r2, 2), '\n')
 cat("MXL normalized weights:\n")
 print(round(delta.ci(rum.fullsample$rpl), 2))
+cat("MXL MARs:\n")
+print(round(deltaMethod(coef(rum.fullsample$rpl), "PFS/-mod", vcov=-solve(rum.fullsample$rpl$hessian)), 2))
+print(round(deltaMethod(coef(rum.fullsample$rpl), "PFS/-sev", vcov=-solve(rum.fullsample$rpl$hessian)), 2))
 cat("=============\n")
 
 cat("=== DIR model ===\n")
