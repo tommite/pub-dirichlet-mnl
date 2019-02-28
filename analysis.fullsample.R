@@ -39,6 +39,16 @@ weight.data <- df.w[,c("pfs","mod","sev")]
 bootstrap.samples <- bootstrapWeights(weight.data,1e4)
 round(apply(bootstrap.samples,MARGIN=2,quantile,probs=c(0.025,0.975)),2) # Bootstap 95% confidence intervals
 
+## Bootstrapped dirichlet model confidence intervals ##
+n.samples <- 1e4
+mean.weights <- c()
+for (i in 1:n.samples) {
+  Y <- DR_data(weight.data[sample(1:nrow(weight.data),nrow(weight.data),replace=T),])
+  res.dir <- DirichReg(Y~1) # Fit null model (model without any covariates) to the weight data
+  mean.weights <- rbind(mean.weights,exp(res.dir$coefficients)/sum(exp(res.dir$coefficients)))
+}
+round(apply(mean.weights,MARGIN=2,quantile,probs=c(0.025,0.975)),2) # Bootstap 95% confidence intervals
+
 ## Fit models to full-sample data
 df.w$Y <- DR_data(df.w[,c("pfs","mod","sev")]) # Add dirichlet response variable to the weight dataset
 res.dir <- DirichReg(Y~1,df.w) # Fit null model (model without any covariates) to the weight data
