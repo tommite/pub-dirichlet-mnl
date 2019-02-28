@@ -105,17 +105,42 @@ test.stats.mse <- function(res, f=eucl.dist) {
     }, .progress='text')
 }
 
+test.stats.mar <- function(res) {
+    rng.sizes <- aaply(ranges, 1, diff)
+
+    ldply(res, function(y) {
+        mar.dce <- laply(y$res.dce, function(x) {
+            mars <- c(x$coefficients[1] / -x$coefficients[2],
+                      x$coefficients[1] / -x$coefficients[3])
+            names(mars) <- c('MAR.mod', 'MAR.sev')
+            mars
+        })
+        mar.dir <- cbind((y$res.dir[,1] / y$res.dir[,2]) * (rng.sizes[2] / rng.sizes[1]),
+        (y$res.dir[,1] / y$res.dir[,3]) * (rng.sizes[3] / rng.sizes[1]))
+        colnames(mar.dir) <- c('MAR.mod', 'MAR.sev')
+        r.full <- cbind(mar.dce, mar.dir,
+                        y$n.questions, y$n.respondents)
+        colnames(r.full) <- c('MAR.dce.mod', 'MAR.dce.sev',
+                              'MAR.dir.mod', 'MAR.dir.sev',
+                              'n.quest', 'n.respondents')
+        r.full
+    }, .progress='text')
+}
+
 ## Save results for possibly re-doing the figures
 saveRDS(res.vary.n, 'res.convergence.rds')
 
 test.p.stats.mnl <- test.stats.p(res.vary.n)
 test.stats.mse <- test.stats.mse(res.vary.n)
+test.stats.mar <- test.stats.mar(res.vary.n)
 
 ## Plot test stats vary n respondents ##
 df.molten.p <- melt(as.data.frame(test.p.stats.mnl),
                       measure.vars=c('PFS.p', 'mod.p', 'sev.p'))
 df.molten.mse <- melt(as.data.frame(test.stats.mse),
                       measure.vars=c('err.mnl', 'err.dir'))
+df.molten.mar <- melt(as.data.frame(test.stats.mar),
+                      measure.vars=c('MAR.dce.mod', 'MAR.dce.sev', 'MAR.dir.mod', 'MAR.dir.sev'))
 
 ## Display percentages within 0.05
 l_ply(seq(from=20, to=540, by=20), function(ss) {
@@ -152,4 +177,34 @@ p <- ggplot(df.plot, aes(x=n.respondents, y=value)) +
     ylab('p-value') + xlab('Number of respondents') + plot.theme + scale_colour_economist() +
     coord_cartesian(ylim=c(0, 0.80))
 p + scale_y_continuous(breaks = sort(c(ggplot_build(p)$layout$panel_ranges[[1]]$y.major_source, 0.05)))
+dev.off()
+
+## Revalue for having correct subplot titles ##
+df.molten.mar$variable <- revalue(df.molten.mar$variable, c('MAR.dce.mod'='MNL - Moderate AEs',
+                                                            'MAR.dce.sev'='MNL - Severe AEs',
+                                                            'MAR.dir.mod'='Dirichlet - Moderate AEs',
+                                                            'MAR.dir.sev'='Dirichlet - Severe AEs'
+                                                            ))
+do.mar.plot <- function(df.plot, cut.off, limit=0) {
+    df.plot[df.plot$value > cut.off, 'value'] <- cut.off
+    df.plot$n.respondents <- factor(df.plot$n.respondents,
+                                    labels=unique(df.plot$n.respondents))
+    ggplot(df.plot, aes(x=n.respondents, y=value)) +
+        geom_boxplot(outlier.colour='red', outlier.shape=20, outlier.size=2) +
+        ylab('MAR') + xlab('Number of respondents') +
+        plot.theme + scale_colour_economist() +
+        ggtitle(unique(df.plot$variable)) + scale_y_continuous(limits=c(limit, cut.off)) +
+        geom_hline(aes(yintercept=cut.off), color='darkblue', linetype='dashed', size=1)
+}
+pdf('error-mar-moderate.pdf', width=15, height=10)
+grid.arrange(do.mar.plot(subset(df.molten.mar,
+                                n.respondents <= 560 & variable == 'MNL - Moderate AEs'), 10.0),
+             do.mar.plot(subset(df.molten.mar,
+                                n.respondents <= 560 & variable == 'Dirichlet - Moderate AEs'), 10.0), ncol=1)
+dev.off()
+pdf('error-mar-severe.pdf', width=15, height=10)
+grid.arrange(do.mar.plot(subset(df.molten.mar,
+                                n.respondents <= 560 & variable == 'MNL - Severe AEs'), 5.0, 1.0),
+             do.mar.plot(subset(df.molten.mar,
+                                n.respondents <= 560 & variable == 'Dirichlet - Severe AEs'), 5.0, 1.0), ncol=1)
 dev.off()

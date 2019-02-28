@@ -1,6 +1,7 @@
 library(plyr)
 library(smaa)
 library(DirichletReg)
+library(alr3)
 
 source('load.dce.R')
 source('dirichlet-cvm.R')
@@ -27,14 +28,14 @@ res.mnl <- mlogit(choice ~ 0 + PFS + mod + sev,
 
 
 ## Perform bootstrapping to obtain confidence intervals for the sample mean of the weights
-bootstrapWeights <- function(weight.data,n.samples) { 
+bootstrapWeights <- function(weight.data,n.samples) {
   weights <- c()
   for (i in 1:n.samples) {
     weights <- rbind(weights,colMeans(weight.data[sample(1:nrow(weight.data),nrow(weight.data),replace=T),]))
   }
   weights
 }
-  
+
 weight.data <- df.w[,c("pfs","mod","sev")]
 bootstrap.samples <- bootstrapWeights(weight.data,1e4)
 round(apply(bootstrap.samples,MARGIN=2,quantile,probs=c(0.025,0.975)),2) # Bootstap 95% confidence intervals
@@ -69,20 +70,34 @@ adj.r2 <- function(res) {
 mnl.adj.r2 <- adj.r2(rum.fullsample$mnl)
 mxl.adj.r2 <- adj.r2(rum.fullsample$rpl)
 
-## Calculate SE's for dirichlet
-dir.cvm <- calc.covm(dir.fullsample)
-dir.se <- sqrt(diag(dir.cvm))
+## SEs using delta method
+delta.ci <- function(mod) {
+    ci1 <- deltaMethod(mod, "(PFS * 40) / ((PFS * 40) - (mod * 40) - (sev * 60))")
+    ci2 <- deltaMethod(mod, "-(mod * 40) / ((PFS * 40) - (mod * 40) - (sev * 60))")
+    ci3 <- deltaMethod(mod, "-(sev * 60) / ((PFS * 40) - (mod * 40) - (sev * 60))")
+    res <- rbind(ci1, ci2, ci3)
+    rownames(res) <- c('PFS', 'mod', 'sev')
+    res
+}
 
 cat("=== MNL model ===\n")
 print(summary(res.mnl))
 cat("MNL adjusted McFadden's R2: ", round(mnl.adj.r2, 2), '\n')
-cat("MNL normalized weights: ", round(mnl.fullsample.w, 2), '\n')
+cat("MNL normalized weights:\n")
+print(round(delta.ci(rum.fullsample$mnl), 2))
+cat("MNL MARs:\n")
+print(round(deltaMethod(coef(rum.fullsample$mnl), "PFS/-mod", vcov=-solve(rum.fullsample$mnl$hessian)), 2))
+print(round(deltaMethod(coef(rum.fullsample$mnl), "PFS/-sev", vcov=-solve(rum.fullsample$mnl$hessian)), 2))
 cat("=============\n")
 
 cat("=== MXL model ===\n")
 print(summary(res.rpl))
-#cat("MXL adjusted McFadden's R2: ", round(mxl.adj.r2, 2), '\n')
-cat("MXL normalized weights: ", round(rpl.fullsample.w, 2), '\n')
+cat("MXL adjusted McFadden's R2: ", round(mxl.adj.r2, 2), '\n')
+cat("MXL normalized weights:\n")
+print(round(delta.ci(rum.fullsample$rpl), 2))
+cat("MXL MARs:\n")
+print(round(deltaMethod(coef(rum.fullsample$rpl), "PFS/-mod", vcov=-solve(rum.fullsample$rpl$hessian)), 2))
+print(round(deltaMethod(coef(rum.fullsample$rpl), "PFS/-sev", vcov=-solve(rum.fullsample$rpl$hessian)), 2))
 cat("=============\n")
 
 cat("=== DIR model ===\n")
