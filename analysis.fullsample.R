@@ -40,6 +40,15 @@ weight.data <- df.w[,c("pfs","mod","sev")]
 bootstrap.samples <- bootstrapWeights(weight.data,1e4)
 round(apply(bootstrap.samples,MARGIN=2,quantile,probs=c(0.025,0.975)),2) # Bootstap 95% confidence intervals
 
+# Calculate marginal substitution rates (maximum acceptable risks) 
+MAR.mod <- bootstrap.samples[,"pfs"]/bootstrap.samples[,"mod"] * 40/40
+round(mean(MAR.mod),2)
+round(sqrt(var(MAR.mod)),2) 
+
+MAR.sev <- bootstrap.samples[,"pfs"]/bootstrap.samples[,"sev"] * 60/40
+round(mean(MAR.sev),2)
+round(sqrt(var(MAR.sev)),2)
+
 ## Bootstrapped dirichlet model confidence intervals ##
 n.samples <- 1e4
 mean.weights <- c()
@@ -49,6 +58,15 @@ for (i in 1:n.samples) {
   mean.weights <- rbind(mean.weights,exp(res.dir$coefficients)/sum(exp(res.dir$coefficients)))
 }
 round(apply(mean.weights,MARGIN=2,quantile,probs=c(0.025,0.975)),2) # Bootstap 95% confidence intervals
+
+# Calculate marginal substitution rates (maximum acceptable risks) 
+MAR.mod <- mean.weights[,"pfs"]/mean.weights[,"mod"] * 40/40
+round(mean(MAR.mod),2)
+round(sqrt(var(MAR.mod)),2) 
+
+MAR.sev <- mean.weights[,"pfs"]/mean.weights[,"sev"] * 60/40
+round(mean(MAR.sev),2)
+round(sqrt(var(MAR.sev)),2)
 
 ## Fit models to full-sample data
 df.w$Y <- DR_data(df.w[,c("pfs","mod","sev")]) # Add dirichlet response variable to the weight dataset
