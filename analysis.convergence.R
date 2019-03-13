@@ -87,7 +87,7 @@ error.catch.simulate <- function(n.questions=6, n.respondents=50, n.simul=100) {
 
 cat('=== Convergence tests - varying number of respondents ===\n')
 ## vary number of respondents
-res.vary.n <- llply(seq(from=20, to=540, by=20), error.catch.simulate,
+res.vary.n <- llply(seq(from=20, to=500, by=20), error.catch.simulate,
                     n.questions=6, n.simul=n.simul, .progress='text')
 
 test.stats.mse <- function(res, f=eucl.dist) {
@@ -143,7 +143,7 @@ df.molten.mar <- melt(as.data.frame(test.stats.mar),
                       measure.vars=c('MAR.dce.mod', 'MAR.dce.sev', 'MAR.dir.mod', 'MAR.dir.sev'))
 
 ## Display percentages within 0.05
-l_ply(seq(from=20, to=540, by=20), function(ss) {
+l_ply(seq(from=20, to=500, by=20), function(ss) {
     data <- subset(test.stats.mse, n.respondents == ss)
     cat('SS ', ss,
         ' MNL: ', sum(data$err.mnl < 0.05) / nrow(data),
@@ -198,13 +198,13 @@ do.mar.plot <- function(df.plot, cut.off, limit=0) {
 }
 pdf('error-mar-moderate.pdf', width=15, height=10)
 grid.arrange(do.mar.plot(subset(df.molten.mar,
-                                n.respondents <= 560 & variable == 'MNL - Moderate AEs'), 10.0),
+                                n.respondents <= 500 & variable == 'MNL - Moderate AEs'), 10.0),
              do.mar.plot(subset(df.molten.mar,
-                                n.respondents <= 560 & variable == 'Dirichlet - Moderate AEs'), 10.0), ncol=1)
+                                n.respondents <= 500 & variable == 'Dirichlet - Moderate AEs'), 10.0), ncol=1)
 dev.off()
 pdf('error-mar-severe.pdf', width=15, height=10)
 grid.arrange(do.mar.plot(subset(df.molten.mar,
-                                n.respondents <= 560 & variable == 'MNL - Severe AEs'), 5.0, 1.0),
+                                n.respondents <= 500 & variable == 'MNL - Severe AEs'), 5.0, 1.0),
              do.mar.plot(subset(df.molten.mar,
-                                n.respondents <= 560 & variable == 'Dirichlet - Severe AEs'), 5.0, 1.0), ncol=1)
+                                n.respondents <= 500 & variable == 'Dirichlet - Severe AEs'), 5.0, 1.0), ncol=1)
 dev.off()
